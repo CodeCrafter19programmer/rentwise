@@ -1,0 +1,236 @@
+## PART 1: MASTER AI PROMPT (FOR REPLIT / AI CODING ASSISTANT)
+
+**Role & Goal**
+You are a senior full‑stack systems engineer and software architect. Build a **production‑grade Rental Management System prototype** using **Next.js (App Router), React, TypeScript, Supabase (Auth, Database, Storage, Edge Functions), and Vercel**. The system must solve real landlord and property‑manager pain points by automating rentals, payments, maintenance, communication, and reporting.
+
+---
+
+### Core Product Objectives
+
+* Eliminate manual rental workflows
+* Centralize tenant, lease, payment, and maintenance data
+* Automate rent collection and reminders
+* Improve tenant experience via self‑service portals
+* Provide managers with real‑time oversight and reports
+
+---
+
+### Tech Stack (STRICT)
+
+* **Frontend:** Next.js (App Router), React, TypeScript
+* **Backend:** Supabase ONLY (Postgres, Auth, Storage, Edge Functions)
+* **Deployment:** Vercel
+* **State Management:** React hooks + server components
+* **Styling:** Tailwind CSS
+* **Forms:** React Hook Form + Zod validation
+
+---
+
+### Coding Rules & Best Practices (MANDATORY)
+
+1. Use **TypeScript everywhere** (no `any`)
+2. Strong separation of concerns (UI, logic, data)
+3. Server Actions for mutations
+4. Reusable components (no duplication)
+5. Secure Supabase Row Level Security (RLS)
+6. Role‑based access control (Admin, Manager, Tenant)
+7. Environment variables only (no secrets in code)
+8. Atomic commits & clean folder structure
+9. Clear comments explaining WHY, not WHAT
+10. Scalable architecture (multi‑property ready)
+
+---
+
+### Core Features to Implement
+
+#### Authentication & Roles
+
+* Supabase Auth (email/password)
+* Roles stored in `profiles` table
+* Route protection by role
+
+#### Tenant & Lease Management
+
+* Create/edit tenants
+* Assign tenants to properties
+* Generate digital leases
+* Track lease start/end, rent amount
+
+#### Rent Collection
+
+* Record rent payments (manual + future‑ready for online)
+* Automated rent reminders (scheduled edge functions)
+* Late fee logic
+
+#### Maintenance Management
+
+* Tenant maintenance request portal
+* Work order status tracking (open → in progress → resolved)
+* Vendor assignment
+
+#### Financials
+
+* Income & expense tracking
+* Monthly reports per property
+
+#### Communication
+
+* Central message system between tenants & managers
+
+---
+
+### Required Output
+
+* Full working prototype
+* Clean, readable, documented code
+* Ready for export from Replit to local machine
+
+---
+
+## PART 2: SYSTEM ARCHITECTURE & DATA FLOW DOCUMENTATION
+
+### 1. High‑Level Architecture
+
+User (Browser)
+→ Next.js App (Vercel)
+→ Supabase Auth
+→ Supabase Postgres
+→ Supabase Storage
+→ Supabase Edge Functions
+
+---
+
+### 2. Database Design (Core Tables)
+
+#### `profiles`
+
+* id (uuid, auth.uid)
+* role (admin | manager | tenant)
+* name
+* phone
+
+#### `properties`
+
+* id
+* name
+* location
+* manager_id
+
+#### `units`
+
+* id
+* property_id
+* unit_number
+* rent_amount
+* status
+
+#### `leases`
+
+* id
+* unit_id
+* tenant_id
+* start_date
+* end_date
+* rent_amount
+
+#### `payments`
+
+* id
+* lease_id
+* amount
+* status
+* paid_at
+
+#### `maintenance_requests`
+
+* id
+* unit_id
+* tenant_id
+* description
+* status
+
+---
+
+### 3. Data Flow Example (Rent Payment)
+
+1. Tenant logs in
+2. Tenant opens Payments page
+3. Server Component fetches lease & balance from Supabase
+4. Tenant submits payment
+5. Server Action writes to `payments`
+6. Edge Function triggers reminder/report update
+7. UI updates via revalidation
+
+---
+
+### 4. Component Architecture
+
+#### Layouts
+
+* `app/layout.tsx` – global layout
+* `app/(auth)` – login/register
+* `app/(dashboard)` – protected routes
+
+#### Components
+
+* `PropertyCard`
+* `UnitTable`
+* `PaymentHistory`
+* `MaintenanceForm`
+* `MessageThread`
+
+Reusable, typed, isolated.
+
+---
+
+### 5. App Operation Flow
+
+#### Admin
+
+* Manages properties & managers
+* Views system‑wide reports
+
+#### Manager
+
+* Manages units, leases, tenants
+* Tracks payments & maintenance
+
+#### Tenant
+
+* Views lease
+* Pays rent
+* Submits maintenance requests
+
+---
+
+### 6. Security Model
+
+* Supabase RLS on every table
+* Users can only access rows they own or manage
+* Server Actions validate role before mutation
+
+---
+
+### 7. Deployment Flow
+
+1. Build prototype on Replit
+2. Push to GitHub
+3. Connect GitHub → Vercel
+4. Add Supabase env variables
+5. Deploy
+
+---
+
+### 8. Scalability Notes
+
+* Multi‑property ready
+* Payment gateways pluggable
+* Mobile app friendly API
+
+---
+
+## FINAL NOTE
+
+This system is intentionally designed to be **real‑world, monetizable, and scalable**. It avoids toy‑project shortcuts and mirrors how serious SaaS rental platforms are built.
+
+If expanded correctly, this can become a full commercial product.
