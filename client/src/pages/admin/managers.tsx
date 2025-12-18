@@ -1,0 +1,262 @@
+import { useState } from "react";
+import { Plus, Search, Mail, Phone, Building2, UserCircle } from "lucide-react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { EmptyState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+import { mockProfiles, mockProperties } from "@/lib/mock-data";
+
+const managerFormSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(10, "Valid phone number is required"),
+});
+
+type ManagerFormData = z.infer<typeof managerFormSchema>;
+
+export default function AdminManagers() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { toast } = useToast();
+
+  const managers = mockProfiles.filter((p) => p.role === "manager");
+
+  const filteredManagers = managers.filter((manager) =>
+    manager.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    manager.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const getManagerProperties = (managerId: string) => {
+    return mockProperties.filter((p) => p.managerId === managerId);
+  };
+
+  const form = useForm<ManagerFormData>({
+    resolver: zodResolver(managerFormSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+    },
+  });
+
+  const onSubmit = (data: ManagerFormData) => {
+    toast({
+      title: "Manager added",
+      description: `${data.name} has been added as a property manager.`,
+    });
+    setIsDialogOpen(false);
+    form.reset();
+  };
+
+  return (
+    <DashboardLayout
+      title="Managers"
+      breadcrumbs={[
+        { label: "Admin", href: "/admin" },
+        { label: "Managers" },
+      ]}
+    >
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Property Managers</h1>
+            <p className="text-muted-foreground">
+              Manage your property management team
+            </p>
+          </div>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-manager">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Manager
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Manager</DialogTitle>
+                <DialogDescription>
+                  Enter the details for the new property manager
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="John Doe" data-testid="input-manager-name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="john@example.com" data-testid="input-manager-email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="(555) 123-4567" data-testid="input-manager-phone" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" data-testid="button-submit-manager">
+                      Add Manager
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search managers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-search-managers"
+          />
+        </div>
+
+        {filteredManagers.length === 0 ? (
+          <EmptyState
+            icon={UserCircle}
+            title="No managers found"
+            description="No property managers match your search criteria."
+            actionLabel="Add Manager"
+            onAction={() => setIsDialogOpen(true)}
+            testId="empty-managers"
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredManagers.map((manager) => {
+              const properties = getManagerProperties(manager.id);
+              const initials = manager.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .toUpperCase();
+
+              return (
+                <Card key={manager.id} data-testid={`card-manager-${manager.id}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-12 w-12">
+                        <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 overflow-hidden">
+                        <CardTitle className="text-lg" data-testid={`text-manager-name-${manager.id}`}>
+                          {manager.name}
+                        </CardTitle>
+                        <Badge variant="secondary" className="mt-1">
+                          Property Manager
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Mail className="h-4 w-4" />
+                        <span className="truncate">{manager.email}</span>
+                      </div>
+                      {manager.phone && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="h-4 w-4" />
+                          <span>{manager.phone}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {properties.length} {properties.length === 1 ? "Property" : "Properties"}
+                        </span>
+                      </div>
+                      {properties.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {properties.slice(0, 2).map((prop) => (
+                            <Badge key={prop.id} variant="outline" className="text-xs">
+                              {prop.name}
+                            </Badge>
+                          ))}
+                          {properties.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{properties.length - 2} more
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <Button variant="outline" size="sm" className="flex-1" data-testid={`button-view-manager-${manager.id}`}>
+                        View Details
+                      </Button>
+                      <Button variant="ghost" size="sm" className="flex-1" data-testid={`button-message-manager-${manager.id}`}>
+                        Message
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}

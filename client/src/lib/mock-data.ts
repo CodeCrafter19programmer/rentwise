@@ -1,0 +1,537 @@
+import type { 
+  Profile, Property, Unit, Lease, Payment, 
+  MaintenanceRequest, Message, Expense,
+  UserRole, UnitStatus, PaymentStatus, MaintenanceStatus, MaintenancePriority 
+} from "@shared/schema";
+
+export const mockProfiles: Profile[] = [
+  {
+    id: "admin-1",
+    email: "admin@rentwise.com",
+    password: "hashed",
+    name: "Sarah Johnson",
+    phone: "(555) 123-4567",
+    role: "admin" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "manager-1",
+    email: "michael@rentwise.com",
+    password: "hashed",
+    name: "Michael Chen",
+    phone: "(555) 234-5678",
+    role: "manager" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-01-15"),
+  },
+  {
+    id: "manager-2",
+    email: "emily@rentwise.com",
+    password: "hashed",
+    name: "Emily Rodriguez",
+    phone: "(555) 345-6789",
+    role: "manager" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-02-01"),
+  },
+  {
+    id: "tenant-1",
+    email: "john@email.com",
+    password: "hashed",
+    name: "John Smith",
+    phone: "(555) 456-7890",
+    role: "tenant" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-03-01"),
+  },
+  {
+    id: "tenant-2",
+    email: "lisa@email.com",
+    password: "hashed",
+    name: "Lisa Williams",
+    phone: "(555) 567-8901",
+    role: "tenant" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-03-15"),
+  },
+  {
+    id: "tenant-3",
+    email: "david@email.com",
+    password: "hashed",
+    name: "David Brown",
+    phone: "(555) 678-9012",
+    role: "tenant" as UserRole,
+    avatarUrl: null,
+    createdAt: new Date("2024-04-01"),
+  },
+];
+
+export const mockProperties: Property[] = [
+  {
+    id: "prop-1",
+    name: "Sunset Apartments",
+    address: "123 Sunset Boulevard",
+    city: "Los Angeles",
+    state: "CA",
+    zipCode: "90028",
+    managerId: "manager-1",
+    imageUrl: null,
+    totalUnits: 24,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "prop-2",
+    name: "Ocean View Residences",
+    address: "456 Pacific Coast Highway",
+    city: "Santa Monica",
+    state: "CA",
+    zipCode: "90401",
+    managerId: "manager-1",
+    imageUrl: null,
+    totalUnits: 18,
+    createdAt: new Date("2024-01-15"),
+  },
+  {
+    id: "prop-3",
+    name: "Downtown Lofts",
+    address: "789 Main Street",
+    city: "San Francisco",
+    state: "CA",
+    zipCode: "94102",
+    managerId: "manager-2",
+    imageUrl: null,
+    totalUnits: 32,
+    createdAt: new Date("2024-02-01"),
+  },
+  {
+    id: "prop-4",
+    name: "Mountain Heights",
+    address: "321 Highland Drive",
+    city: "Denver",
+    state: "CO",
+    zipCode: "80202",
+    managerId: "manager-2",
+    imageUrl: null,
+    totalUnits: 16,
+    createdAt: new Date("2024-03-01"),
+  },
+];
+
+export const mockUnits: Unit[] = [
+  {
+    id: "unit-1",
+    propertyId: "prop-1",
+    unitNumber: "101",
+    bedrooms: 1,
+    bathrooms: "1",
+    sqft: 650,
+    rentAmount: "1850.00",
+    status: "occupied" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "unit-2",
+    propertyId: "prop-1",
+    unitNumber: "102",
+    bedrooms: 2,
+    bathrooms: "1.5",
+    sqft: 950,
+    rentAmount: "2450.00",
+    status: "occupied" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "unit-3",
+    propertyId: "prop-1",
+    unitNumber: "103",
+    bedrooms: 2,
+    bathrooms: "2",
+    sqft: 1100,
+    rentAmount: "2750.00",
+    status: "vacant" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "unit-4",
+    propertyId: "prop-1",
+    unitNumber: "201",
+    bedrooms: 3,
+    bathrooms: "2",
+    sqft: 1400,
+    rentAmount: "3200.00",
+    status: "maintenance" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-01"),
+  },
+  {
+    id: "unit-5",
+    propertyId: "prop-2",
+    unitNumber: "A1",
+    bedrooms: 1,
+    bathrooms: "1",
+    sqft: 700,
+    rentAmount: "2100.00",
+    status: "occupied" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-15"),
+  },
+  {
+    id: "unit-6",
+    propertyId: "prop-2",
+    unitNumber: "A2",
+    bedrooms: 2,
+    bathrooms: "2",
+    sqft: 1050,
+    rentAmount: "2800.00",
+    status: "vacant" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-01-15"),
+  },
+  {
+    id: "unit-7",
+    propertyId: "prop-3",
+    unitNumber: "501",
+    bedrooms: 1,
+    bathrooms: "1",
+    sqft: 800,
+    rentAmount: "2950.00",
+    status: "occupied" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-02-01"),
+  },
+  {
+    id: "unit-8",
+    propertyId: "prop-3",
+    unitNumber: "502",
+    bedrooms: 2,
+    bathrooms: "2",
+    sqft: 1200,
+    rentAmount: "3800.00",
+    status: "occupied" as UnitStatus,
+    imageUrl: null,
+    createdAt: new Date("2024-02-01"),
+  },
+];
+
+export const mockLeases: Lease[] = [
+  {
+    id: "lease-1",
+    unitId: "unit-1",
+    tenantId: "tenant-1",
+    startDate: new Date("2024-03-01"),
+    endDate: new Date("2025-02-28"),
+    rentAmount: "1850.00",
+    securityDeposit: "1850.00",
+    isActive: true,
+    createdAt: new Date("2024-02-15"),
+  },
+  {
+    id: "lease-2",
+    unitId: "unit-2",
+    tenantId: "tenant-2",
+    startDate: new Date("2024-04-01"),
+    endDate: new Date("2025-03-31"),
+    rentAmount: "2450.00",
+    securityDeposit: "2450.00",
+    isActive: true,
+    createdAt: new Date("2024-03-15"),
+  },
+  {
+    id: "lease-3",
+    unitId: "unit-5",
+    tenantId: "tenant-3",
+    startDate: new Date("2024-05-01"),
+    endDate: new Date("2025-04-30"),
+    rentAmount: "2100.00",
+    securityDeposit: "2100.00",
+    isActive: true,
+    createdAt: new Date("2024-04-15"),
+  },
+];
+
+export const mockPayments: Payment[] = [
+  {
+    id: "pay-1",
+    leaseId: "lease-1",
+    amount: "1850.00",
+    dueDate: new Date("2024-12-01"),
+    paidAt: new Date("2024-11-28"),
+    status: "paid" as PaymentStatus,
+    paymentMethod: "Bank Transfer",
+    transactionId: "TXN-001234",
+    createdAt: new Date("2024-11-01"),
+  },
+  {
+    id: "pay-2",
+    leaseId: "lease-1",
+    amount: "1850.00",
+    dueDate: new Date("2025-01-01"),
+    paidAt: null,
+    status: "pending" as PaymentStatus,
+    paymentMethod: null,
+    transactionId: null,
+    createdAt: new Date("2024-12-01"),
+  },
+  {
+    id: "pay-3",
+    leaseId: "lease-2",
+    amount: "2450.00",
+    dueDate: new Date("2024-12-01"),
+    paidAt: new Date("2024-12-01"),
+    status: "paid" as PaymentStatus,
+    paymentMethod: "Credit Card",
+    transactionId: "TXN-001235",
+    createdAt: new Date("2024-11-01"),
+  },
+  {
+    id: "pay-4",
+    leaseId: "lease-2",
+    amount: "2450.00",
+    dueDate: new Date("2025-01-01"),
+    paidAt: null,
+    status: "overdue" as PaymentStatus,
+    paymentMethod: null,
+    transactionId: null,
+    createdAt: new Date("2024-12-01"),
+  },
+  {
+    id: "pay-5",
+    leaseId: "lease-3",
+    amount: "2100.00",
+    dueDate: new Date("2024-12-01"),
+    paidAt: new Date("2024-12-02"),
+    status: "paid" as PaymentStatus,
+    paymentMethod: "Bank Transfer",
+    transactionId: "TXN-001236",
+    createdAt: new Date("2024-11-01"),
+  },
+  {
+    id: "pay-6",
+    leaseId: "lease-3",
+    amount: "2100.00",
+    dueDate: new Date("2025-01-01"),
+    paidAt: null,
+    status: "pending" as PaymentStatus,
+    paymentMethod: null,
+    transactionId: null,
+    createdAt: new Date("2024-12-01"),
+  },
+];
+
+export const mockMaintenanceRequests: MaintenanceRequest[] = [
+  {
+    id: "maint-1",
+    unitId: "unit-1",
+    tenantId: "tenant-1",
+    title: "Leaking Faucet",
+    description: "The kitchen faucet has been dripping constantly for the past week. Water is pooling under the sink.",
+    priority: "medium" as MaintenancePriority,
+    status: "in_progress" as MaintenanceStatus,
+    vendorId: "vendor-1",
+    vendorName: "Quick Fix Plumbing",
+    resolvedAt: null,
+    createdAt: new Date("2024-12-10"),
+  },
+  {
+    id: "maint-2",
+    unitId: "unit-2",
+    tenantId: "tenant-2",
+    title: "Heating Not Working",
+    description: "The central heating unit stopped working yesterday. Temperature inside is very cold.",
+    priority: "high" as MaintenancePriority,
+    status: "open" as MaintenanceStatus,
+    vendorId: null,
+    vendorName: null,
+    resolvedAt: null,
+    createdAt: new Date("2024-12-15"),
+  },
+  {
+    id: "maint-3",
+    unitId: "unit-1",
+    tenantId: "tenant-1",
+    title: "Broken Window Latch",
+    description: "The latch on the bedroom window is broken and the window won't close properly.",
+    priority: "low" as MaintenancePriority,
+    status: "resolved" as MaintenanceStatus,
+    vendorId: "vendor-2",
+    vendorName: "All Purpose Repairs",
+    resolvedAt: new Date("2024-12-08"),
+    createdAt: new Date("2024-12-01"),
+  },
+  {
+    id: "maint-4",
+    unitId: "unit-5",
+    tenantId: "tenant-3",
+    title: "Garbage Disposal Jammed",
+    description: "The garbage disposal is making a loud noise and won't turn on properly.",
+    priority: "medium" as MaintenancePriority,
+    status: "open" as MaintenanceStatus,
+    vendorId: null,
+    vendorName: null,
+    resolvedAt: null,
+    createdAt: new Date("2024-12-14"),
+  },
+];
+
+export const mockMessages: Message[] = [
+  {
+    id: "msg-1",
+    senderId: "tenant-1",
+    receiverId: "manager-1",
+    subject: "Question about lease renewal",
+    content: "Hi Michael, I wanted to ask about the process for renewing my lease. It's set to expire in February. What are my options?",
+    isRead: true,
+    createdAt: new Date("2024-12-10T10:30:00"),
+  },
+  {
+    id: "msg-2",
+    senderId: "manager-1",
+    receiverId: "tenant-1",
+    subject: "Re: Question about lease renewal",
+    content: "Hi John, thanks for reaching out! We'd love to have you stay. I'll send over the renewal paperwork next week with the updated terms. Let me know if you have any questions.",
+    isRead: true,
+    createdAt: new Date("2024-12-10T14:15:00"),
+  },
+  {
+    id: "msg-3",
+    senderId: "tenant-2",
+    receiverId: "manager-1",
+    subject: "Parking spot inquiry",
+    content: "Hello, I was wondering if there are any additional parking spots available for rent? My partner just moved in and we could use a second spot.",
+    isRead: false,
+    createdAt: new Date("2024-12-15T09:00:00"),
+  },
+  {
+    id: "msg-4",
+    senderId: "manager-1",
+    receiverId: "tenant-3",
+    subject: "Welcome to Ocean View Residences!",
+    content: "Welcome to your new home! Please don't hesitate to reach out if you have any questions or concerns. We're here to help make your stay comfortable.",
+    isRead: true,
+    createdAt: new Date("2024-05-01T08:00:00"),
+  },
+];
+
+export const mockExpenses: Expense[] = [
+  {
+    id: "exp-1",
+    propertyId: "prop-1",
+    category: "Maintenance",
+    description: "Plumbing repair - Unit 101",
+    amount: "450.00",
+    date: new Date("2024-12-10"),
+    createdAt: new Date("2024-12-10"),
+  },
+  {
+    id: "exp-2",
+    propertyId: "prop-1",
+    category: "Utilities",
+    description: "Common area electricity - November",
+    amount: "1250.00",
+    date: new Date("2024-12-01"),
+    createdAt: new Date("2024-12-01"),
+  },
+  {
+    id: "exp-3",
+    propertyId: "prop-1",
+    category: "Insurance",
+    description: "Property insurance - Q4",
+    amount: "3200.00",
+    date: new Date("2024-10-01"),
+    createdAt: new Date("2024-10-01"),
+  },
+  {
+    id: "exp-4",
+    propertyId: "prop-2",
+    category: "Landscaping",
+    description: "Monthly landscape maintenance",
+    amount: "800.00",
+    date: new Date("2024-12-05"),
+    createdAt: new Date("2024-12-05"),
+  },
+  {
+    id: "exp-5",
+    propertyId: "prop-2",
+    category: "Maintenance",
+    description: "HVAC servicing",
+    amount: "650.00",
+    date: new Date("2024-11-15"),
+    createdAt: new Date("2024-11-15"),
+  },
+  {
+    id: "exp-6",
+    propertyId: "prop-3",
+    category: "Utilities",
+    description: "Water bill - November",
+    amount: "890.00",
+    date: new Date("2024-12-01"),
+    createdAt: new Date("2024-12-01"),
+  },
+];
+
+export const getPropertyById = (id: string) => mockProperties.find(p => p.id === id);
+export const getUnitById = (id: string) => mockUnits.find(u => u.id === id);
+export const getProfileById = (id: string) => mockProfiles.find(p => p.id === id);
+export const getLeaseById = (id: string) => mockLeases.find(l => l.id === id);
+export const getUnitsByPropertyId = (propertyId: string) => mockUnits.filter(u => u.propertyId === propertyId);
+export const getLeaseByTenantId = (tenantId: string) => mockLeases.find(l => l.tenantId === tenantId && l.isActive);
+export const getPaymentsByLeaseId = (leaseId: string) => mockPayments.filter(p => p.leaseId === leaseId);
+export const getMaintenanceByTenantId = (tenantId: string) => mockMaintenanceRequests.filter(m => m.tenantId === tenantId);
+export const getMaintenanceByUnitId = (unitId: string) => mockMaintenanceRequests.filter(m => m.unitId === unitId);
+export const getMessagesByUserId = (userId: string) => mockMessages.filter(m => m.senderId === userId || m.receiverId === userId);
+export const getExpensesByPropertyId = (propertyId: string) => mockExpenses.filter(e => e.propertyId === propertyId);
+export const getPropertiesByManagerId = (managerId: string) => mockProperties.filter(p => p.managerId === managerId);
+
+export const getMonthlyFinancials = (propertyId: string) => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return months.map((month, index) => ({
+    month,
+    income: Math.floor(Math.random() * 15000) + 8000,
+    expenses: Math.floor(Math.random() * 5000) + 2000,
+  }));
+};
+
+export const getDashboardStats = (role: string, userId?: string) => {
+  if (role === "admin") {
+    return {
+      totalProperties: mockProperties.length,
+      totalUnits: mockUnits.length,
+      occupiedUnits: mockUnits.filter(u => u.status === "occupied").length,
+      vacantUnits: mockUnits.filter(u => u.status === "vacant").length,
+      totalTenants: mockProfiles.filter(p => p.role === "tenant").length,
+      totalManagers: mockProfiles.filter(p => p.role === "manager").length,
+      monthlyRevenue: 42850,
+      pendingMaintenance: mockMaintenanceRequests.filter(m => m.status !== "resolved").length,
+    };
+  } else if (role === "manager") {
+    const properties = mockProperties.filter(p => p.managerId === userId);
+    const propertyIds = properties.map(p => p.id);
+    const units = mockUnits.filter(u => propertyIds.includes(u.propertyId));
+    return {
+      totalProperties: properties.length,
+      totalUnits: units.length,
+      occupiedUnits: units.filter(u => u.status === "occupied").length,
+      vacantUnits: units.filter(u => u.status === "vacant").length,
+      pendingPayments: 3,
+      openMaintenance: mockMaintenanceRequests.filter(m => m.status === "open").length,
+      monthlyRevenue: 28500,
+      collectionRate: 94,
+    };
+  } else {
+    const lease = mockLeases.find(l => l.tenantId === userId && l.isActive);
+    const payments = lease ? mockPayments.filter(p => p.leaseId === lease.id) : [];
+    const pendingPayment = payments.find(p => p.status === "pending" || p.status === "overdue");
+    return {
+      currentRent: lease?.rentAmount || "0",
+      nextPaymentDue: pendingPayment?.dueDate || null,
+      amountDue: pendingPayment?.amount || "0",
+      leaseEndDate: lease?.endDate || null,
+      openMaintenanceRequests: mockMaintenanceRequests.filter(m => m.tenantId === userId && m.status !== "resolved").length,
+      paymentHistory: payments,
+    };
+  }
+};
