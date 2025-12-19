@@ -7,7 +7,4 @@ dist
 .env*.local
 .DS_Store
 attached_assets
-script
-server/vite.ts
-server/static.ts
 
