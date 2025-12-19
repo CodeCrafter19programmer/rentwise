@@ -45,20 +45,22 @@ app.use((req, res, next) => {
 
 // Initialize routes
 let routesInitialized = false;
+let errorHandlerRegistered = false;
 
 async function initializeRoutes() {
   if (!routesInitialized) {
     await registerRoutes(null as any, app);
+    if (!errorHandlerRegistered) {
+      app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+        const status = err.status || err.statusCode || 500;
+        const message = err.message || "Internal Server Error";
+        res.status(status).json({ message });
+      });
+      errorHandlerRegistered = true;
+    }
     routesInitialized = true;
   }
 }
-
-// Error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  res.status(status).json({ message });
-});
 
 // Initialize routes before creating serverless handler
 let serverlessHandler: ReturnType<typeof serverless> | null = null;
