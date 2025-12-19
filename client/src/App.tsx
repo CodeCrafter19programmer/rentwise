@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { Loader2 } from "lucide-react";
 
 import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import NotFound from "@/pages/not-found";
 
 import AdminDashboard from "@/pages/admin/dashboard";
@@ -79,6 +80,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
       
       <Route path="/">
         {isAuthenticated && user ? (
