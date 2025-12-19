@@ -15,17 +15,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { ThemeToggle } from "@/components/theme-toggle";
-import type { UserRole } from "@shared/schema";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -33,12 +25,6 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
-
-const demoAccounts = [
-  { role: "admin" as UserRole, email: "admin@rentwise.com", label: "Administrator" },
-  { role: "manager" as UserRole, email: "michael@rentwise.com", label: "Property Manager" },
-  { role: "tenant" as UserRole, email: "john@email.com", label: "Tenant" },
-];
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -58,38 +44,23 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      const success = await login(data.email, data.password);
-      if (success) {
-        const role = demoAccounts.find((a) => a.email === data.email)?.role || "tenant";
+      const profile = await login(data.email, data.password);
+      if (profile) {
         toast({
           title: "Welcome back!",
           description: "You have successfully logged in.",
         });
-        setLocation(`/${role}`);
+        setLocation(`/${profile.role}`);
       } else {
         toast({
           title: "Login failed",
-          description: "Invalid email or password. Try one of the demo accounts.",
+          description: "Invalid email or password. Please check your credentials and try again.",
           variant: "destructive",
         });
       }
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleDemoLogin = (email: string, role: UserRole) => {
-    form.setValue("email", email);
-    form.setValue("password", "demo123");
-    login(email, "demo123").then((success) => {
-      if (success) {
-        toast({
-          title: "Demo login successful",
-          description: `Logged in as ${role}`,
-        });
-        setLocation(`/${role}`);
-      }
-    });
   };
 
   return (
@@ -187,31 +158,6 @@ export default function LoginPage() {
                   </Button>
                 </form>
               </Form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Quick Demo Access</CardTitle>
-              <CardDescription className="text-sm">
-                Try the app with a demo account
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {demoAccounts.map((account) => (
-                <Button
-                  key={account.role}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => handleDemoLogin(account.email, account.role)}
-                  data-testid={`button-demo-${account.role}`}
-                >
-                  <span className="font-medium">{account.label}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {account.email}
-                  </span>
-                </Button>
-              ))}
             </CardContent>
           </Card>
         </div>

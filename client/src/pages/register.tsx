@@ -67,8 +67,9 @@ export default function RegisterPage() {
       // Backend registration will be wired later. For now, we just show a success message
       // and send the user back to the login page.
       toast({
-        title: "Account created (demo)",
-        description: "Your invite has been accepted. You can now log in with the credentials your manager provides.",
+        title: "Account created",
+        description:
+          "Your invite has been accepted. You can now log in using the credentials provided by your property owner or manager.",
       });
       setLocation("/login");
     } finally {
