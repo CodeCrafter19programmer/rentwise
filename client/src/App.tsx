@@ -52,12 +52,12 @@ function ProtectedRoute({
   component: React.ComponentType; 
   allowedRoles?: string[];
 }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, authLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const hasAccess = isAuthenticated && user && (!allowedRoles || allowedRoles.includes(user.role));
-  const shouldRedirectToLogin = !isAuthenticated;
-  const shouldRedirectToRoleDashboard = isAuthenticated && user && allowedRoles && !allowedRoles.includes(user.role);
+  const hasAccess = !authLoading && isAuthenticated && user && (!allowedRoles || allowedRoles.includes(user.role));
+  const shouldRedirectToLogin = !authLoading && !isAuthenticated;
+  const shouldRedirectToRoleDashboard = !authLoading && isAuthenticated && user && allowedRoles && !allowedRoles.includes(user.role);
 
   useEffect(() => {
     if (shouldRedirectToLogin) {
@@ -67,7 +67,7 @@ function ProtectedRoute({
     }
   }, [shouldRedirectToLogin, shouldRedirectToRoleDashboard, user, setLocation]);
 
-  if (!hasAccess) {
+  if (authLoading || !hasAccess) {
     return <LoadingScreen />;
   }
 
@@ -75,7 +75,7 @@ function ProtectedRoute({
 }
 
 function Router() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, authLoading } = useAuth();
 
   return (
     <Switch>
@@ -83,7 +83,9 @@ function Router() {
       <Route path="/register" component={RegisterPage} />
       
       <Route path="/">
-        {isAuthenticated && user ? (
+        {authLoading ? (
+          <LoadingScreen />
+        ) : isAuthenticated && user ? (
           <Redirect to={`/${user.role}`} />
         ) : (
           <Redirect to="/login" />

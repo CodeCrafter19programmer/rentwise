@@ -33,7 +33,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockProperties, mockProfiles } from "@/lib/mock-data";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { Building2 } from "lucide-react";
 
 const propertyFormSchema = z.object({
@@ -52,11 +53,34 @@ export default function AdminProperties() {
   const [filterCity, setFilterCity] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const managers = mockProfiles.filter((p) => p.role === "manager");
-  const cities = [...new Set(mockProperties.map((p) => p.city))];
+  const { data: managers = [] } = useQuery({
+    queryKey: ["profiles", "managers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, role")
+        .eq("role", "manager");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const filteredProperties = mockProperties.filter((property) => {
+  const { data: properties = [], refetch } = useQuery({
+    queryKey: ["properties"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, address, city, state, zipCode, managerId, totalUnits");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const cities = [...new Set(properties.map((p: any) => p.city))];
+
+  const filteredProperties = properties.filter((property: any) => {
     const matchesSearch =
       property.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       property.address.toLowerCase().includes(searchQuery.toLowerCase());
@@ -76,13 +100,37 @@ export default function AdminProperties() {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (data: PropertyFormData) => {
+      const payload = {
+        name: data.name,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+        managerId: data.managerId || null,
+        totalUnits: 0,
+      };
+      const { error } = await supabase.from("properties").insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["properties"] });
+      toast({ title: "Property created" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create property", description: String(err?.message || err), variant: "destructive" });
+    },
+  });
+
   const onSubmit = (data: PropertyFormData) => {
-    toast({
-      title: "Property created",
-      description: `${data.name} has been added successfully.`,
+    createMutation.mutate(data, {
+      onSettled: () => {
+        setIsDialogOpen(false);
+        form.reset();
+        refetch();
+      },
     });
-    setIsDialogOpen(false);
-    form.reset();
   };
 
   return (

@@ -3,7 +3,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@shared/schema";
-import { mockUnits, getProfileById } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 
 interface PropertyCardProps {
   property: Property;
@@ -12,10 +13,34 @@ interface PropertyCardProps {
 }
 
 export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
-  const units = mockUnits.filter((u) => u.propertyId === property.id);
-  const occupiedUnits = units.filter((u) => u.status === "occupied").length;
-  const vacantUnits = units.filter((u) => u.status === "vacant").length;
-  const manager = property.managerId ? getProfileById(property.managerId) : null;
+  const { data: units } = useQuery({
+    queryKey: ["units", property.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("status")
+        .eq("property_id", property.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const occupiedUnits = (units || []).filter((u: any) => u.status === "occupied").length;
+  const vacantUnits = (units || []).filter((u: any) => u.status === "vacant").length;
+
+  const { data: managerRow } = useQuery({
+    queryKey: ["manager", property.managerId],
+    enabled: !!property.managerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .eq("id", property.managerId as string)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   return (
     <Card className="overflow-hidden hover-elevate" data-testid={`card-property-${property.id}`}>
@@ -30,17 +55,17 @@ export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
                 {property.name}
               </h3>
               <Badge variant="secondary" className="shrink-0">
-                {units.length} Units
+                {typeof (property as any).totalUnits === "number" ? (property as any).totalUnits : ((units ?? []).length)} Units
               </Badge>
             </div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
               <span>{property.address}, {property.city}, {property.state} {property.zipCode}</span>
             </div>
-            {manager && (
+            {managerRow && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Users className="h-4 w-4" />
-                <span>Manager: {manager.name}</span>
+                <span>Manager: {managerRow.name}</span>
               </div>
             )}
           </div>
@@ -48,11 +73,11 @@ export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1">
                 <Home className="h-4 w-4 text-green-600" />
-                <span className="text-muted-foreground">{occupiedUnits} Occupied</span>
+                <span className="text-muted-foreground">{Number.isFinite(occupiedUnits) ? occupiedUnits : "—"} Occupied</span>
               </div>
               <div className="flex items-center gap-1">
                 <Home className="h-4 w-4 text-orange-500" />
-                <span className="text-muted-foreground">{vacantUnits} Vacant</span>
+                <span className="text-muted-foreground">{Number.isFinite(vacantUnits) ? vacantUnits : "—"} Vacant</span>
               </div>
             </div>
             <div className="flex items-center gap-2">

@@ -79,7 +79,8 @@
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0",
     "@vercel/node": "^3.0.0",
-    "serverless-http": "^3.2.0"
+    "serverless-http": "^3.2.0",
+    "@supabase/supabase-js": "^2.45.4"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.4",
