@@ -28,7 +28,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockProfiles, mockProperties } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const managerFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -43,16 +44,43 @@ export default function AdminManagers() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const managers = mockProfiles.filter((p) => p.role === "manager");
+  const { data: managers = [] } = useQuery({
+    queryKey: ["profiles", "managers"],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role, phone")
+        .eq("role", "manager");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const filteredManagers = managers.filter((manager) =>
-    manager.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    manager.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const { data: properties = [] } = useQuery({
+    queryKey: ["adminProperties"],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, manager_id");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertiesByManager = (properties as any[]).reduce((acc: Record<string, any[]>, p: any) => {
+    const mid = p.manager_id;
+    if (!mid) return acc;
+    acc[mid] = acc[mid] || [];
+    acc[mid].push({ id: p.id, name: p.name });
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  const filteredManagers = (managers as any[]).filter((manager: any) =>
+    (manager.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (manager.email || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const getManagerProperties = (managerId: string) => {
-    return mockProperties.filter((p) => p.managerId === managerId);
-  };
 
   const form = useForm<ManagerFormData>({
     resolver: zodResolver(managerFormSchema),
@@ -181,10 +209,10 @@ export default function AdminManagers() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredManagers.map((manager) => {
-              const properties = getManagerProperties(manager.id);
+              const properties = (propertiesByManager as any)[manager.id] || [];
               const initials = manager.name
                 .split(" ")
-                .map((n) => n[0])
+                .map((n: string) => n[0])
                 .join("")
                 .toUpperCase();
 
@@ -228,7 +256,7 @@ export default function AdminManagers() {
                       </div>
                       {properties.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {properties.slice(0, 2).map((prop) => (
+                          {properties.slice(0, 2).map((prop: any) => (
                             <Badge key={prop.id} variant="outline" className="text-xs">
                               {prop.name}
                             </Badge>

@@ -5,15 +5,36 @@ import { PropertyCard } from "@/components/property-card";
 import { EmptyState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth-context";
-import { getPropertiesByManagerId } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export default function ManagerProperties() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const properties = user ? getPropertiesByManagerId(user.id) : [];
+  const { data: properties = [] } = useQuery({
+    queryKey: ["managerProperties", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, address, city, state, zip_code, manager_id, total_units")
+        .eq("manager_id", user!.id);
+      if (error) throw error;
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        zipCode: p.zip_code,
+        managerId: p.manager_id,
+        totalUnits: p.total_units,
+      }));
+    },
+  });
 
-  const filteredProperties = properties.filter((property) =>
+  const filteredProperties = (properties as any[]).filter((property: any) =>
     property.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     property.address.toLowerCase().includes(searchQuery.toLowerCase())
   );

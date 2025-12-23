@@ -134,6 +134,10 @@ export default function ManagerReports() {
   const totalExpenses = financialData.reduce((sum, m) => sum + m.expenses, 0);
   const netProfit = totalIncome - totalExpenses;
 
+  const filteredExpenses = selectedProperty === "all"
+    ? (expenses as any[])
+    : (expenses as any[]).filter((e: any) => e.property_id === selectedProperty);
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",

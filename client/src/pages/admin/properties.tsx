@@ -89,7 +89,9 @@ export default function AdminProperties() {
     },
   });
 
-  const cities = [...new Set(properties.map((p: any) => p.city))];
+  const cities = properties
+    .map((p: any) => p.city)
+    .filter((city: any, index: number, arr: any[]) => arr.indexOf(city) === index);
 
   const filteredProperties = properties.filter((property: any) => {
     const matchesSearch =
@@ -257,7 +259,7 @@ export default function AdminProperties() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {managers.map((manager) => (
+                            {managers.map((manager: any) => (
                               <SelectItem key={manager.id} value={manager.id}>
                                 {manager.name}
                               </SelectItem>
@@ -300,7 +302,7 @@ export default function AdminProperties() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Cities</SelectItem>
-              {cities.map((city) => (
+              {cities.map((city: any) => (
                 <SelectItem key={city} value={city}>
                   {city}
                 </SelectItem>
@@ -320,7 +322,7 @@ export default function AdminProperties() {
           />
         ) : (
           <div className="grid gap-4">
-            {filteredProperties.map((property) => (
+            {filteredProperties.map((property: any) => (
               <PropertyCard
                 key={property.id}
                 property={property}

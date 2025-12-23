@@ -158,8 +158,8 @@ export default function TenantDashboard() {
                   : "text-orange-700 dark:text-orange-400"
               }`}>
                 {isPaymentOverdue
-                  ? `Your rent payment of ${formatCurrency(stats.amountDue)} is overdue.`
-                  : `Your rent payment of ${formatCurrency(stats.amountDue)} is due in ${daysUntilPayment} days.`
+                  ? `Your rent payment of ${formatCurrency(amountDue)} is overdue.`
+                  : `Your rent payment of ${formatCurrency(amountDue)} is due in ${daysUntilPayment} days.`
                 }
               </p>
               <Link href="/tenant/payments">
@@ -295,16 +295,13 @@ export default function TenantDashboard() {
             </Card>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              {openMaintenance.slice(0, 2).map((request) => {
-                const requestUnit = getUnitById(request.unitId);
-                return (
-                  <MaintenanceCard
-                    key={request.id}
-                    request={request}
-                    unitNumber={requestUnit?.unitNumber}
-                  />
-                );
-              })}
+              {openMaintenance.slice(0, 2).map((request: any) => (
+                <MaintenanceCard
+                  key={request.id}
+                  request={request}
+                  unitNumber={unit?.unit_number}
+                />
+              ))}
             </div>
           )}
         </div>

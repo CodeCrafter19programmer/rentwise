@@ -6,15 +6,88 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/lib/auth-context";
-import { getLeaseByTenantId, getUnitById, getPropertyById, getProfileById } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { format, differenceInDays } from "date-fns";
 
 export default function TenantLease() {
   const { user } = useAuth();
-  const lease = user ? getLeaseByTenantId(user.id) : null;
-  const unit = lease ? getUnitById(lease.unitId) : null;
-  const property = unit ? getPropertyById(unit.propertyId) : null;
-  const manager = property?.managerId ? getProfileById(property.managerId) : null;
+  const { data: lease } = useQuery({
+    queryKey: ["tenantLease", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, start_date, end_date, rent_amount, security_deposit, is_active")
+        .eq("tenant_id", user!.id)
+        .eq("is_active", true)
+        .limit(1);
+      if (error) throw error;
+      const row = (data || [])[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        unitId: row.unit_id,
+        tenantId: row.tenant_id,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        rentAmount: row.rent_amount,
+        securityDeposit: row.security_deposit,
+        isActive: row.is_active,
+      } as any;
+    },
+  });
+
+  const { data: unit } = useQuery({
+    queryKey: ["unit", lease?.unitId],
+    enabled: isSupabaseConfigured && !!lease?.unitId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, unit_number, bedrooms, bathrooms, sqft, property_id")
+        .eq("id", lease!.unitId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: property } = useQuery({
+    queryKey: ["property", unit?.property_id],
+    enabled: isSupabaseConfigured && !!unit?.property_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, address, city, state, zip_code, manager_id")
+        .eq("id", unit!.property_id)
+        .single();
+      if (error) throw error;
+      const p = data as any;
+      return {
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        zipCode: p.zip_code,
+        managerId: p.manager_id,
+      };
+    },
+  });
+
+  const { data: manager } = useQuery({
+    queryKey: ["manager", property?.managerId],
+    enabled: isSupabaseConfigured && !!property?.managerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, phone")
+        .eq("id", property!.managerId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
 
   const formatCurrency = (value: string | number) => {
     return new Intl.NumberFormat("en-US", {
@@ -116,7 +189,7 @@ export default function TenantLease() {
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Unit</p>
                     <p className="font-medium" data-testid="text-unit-number">
-                      Unit {unit.unitNumber}
+                      Unit {unit.unit_number}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {unit.bedrooms} bed, {unit.bathrooms} bath • {unit.sqft} sqft

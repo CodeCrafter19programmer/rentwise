@@ -244,7 +244,7 @@ export default function ManagerLeases() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {tenants.map((tenant) => (
+                              {tenants.map((tenant: any) => (
                                 <SelectItem key={tenant.id} value={tenant.id}>
                                   {tenant.name}
                                 </SelectItem>

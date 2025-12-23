@@ -37,7 +37,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const maintenanceFormSchema = z.object({
@@ -51,6 +51,7 @@ type MaintenanceFormData = z.infer<typeof maintenanceFormSchema>;
 export default function TenantMaintenance() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const { data: lease } = useQuery({
@@ -108,9 +109,9 @@ export default function TenantMaintenance() {
     },
   });
 
-  const openRequests = requests.filter((r) => r.status === "open");
-  const inProgressRequests = requests.filter((r) => r.status === "in_progress");
-  const resolvedRequests = requests.filter((r) => r.status === "resolved");
+  const openRequests = requests.filter((r: any) => r.status === "open");
+  const inProgressRequests = requests.filter((r: any) => r.status === "in_progress");
+  const resolvedRequests = requests.filter((r: any) => r.status === "resolved");
 
   const form = useForm<MaintenanceFormData>({
     resolver: zodResolver(maintenanceFormSchema),
@@ -121,13 +122,42 @@ export default function TenantMaintenance() {
     },
   });
 
+  const createRequestMutation = useMutation({
+    mutationFn: async (payload: { title: string; description: string; priority: string }) => {
+      if (!user?.id) throw new Error("Not authenticated");
+      if (!lease?.unitId) throw new Error("No active lease");
+      const { error } = await supabase
+        .from("maintenance_requests")
+        .insert({
+          unit_id: lease.unitId,
+          tenant_id: user.id,
+          title: payload.title,
+          description: payload.description,
+          priority: payload.priority,
+          status: "open",
+        });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenantMaintenance", user?.id] });
+      toast({
+        title: "Request submitted",
+        description: "Your maintenance request has been submitted. We'll get back to you soon.",
+      });
+      setIsDialogOpen(false);
+      form.reset();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to submit request",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: MaintenanceFormData) => {
-    toast({
-      title: "Request submitted",
-      description: "Your maintenance request has been submitted. We'll get back to you soon.",
-    });
-    setIsDialogOpen(false);
-    form.reset();
+    createRequestMutation.mutate(data as any);
   };
 
   return (
@@ -287,7 +317,7 @@ export default function TenantMaintenance() {
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {openRequests.map((request) => (
+                {openRequests.map((request: any) => (
                   <MaintenanceCard
                     key={request.id}
                     request={request}
@@ -309,7 +339,7 @@ export default function TenantMaintenance() {
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {inProgressRequests.map((request) => (
+                {inProgressRequests.map((request: any) => (
                   <MaintenanceCard
                     key={request.id}
                     request={request}
@@ -331,7 +361,7 @@ export default function TenantMaintenance() {
               />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {resolvedRequests.map((request) => (
+                {resolvedRequests.map((request: any) => (
                   <MaintenanceCard
                     key={request.id}
                     request={request}

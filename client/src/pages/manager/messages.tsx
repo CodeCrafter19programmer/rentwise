@@ -10,7 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { mockMessages, mockProfiles, getProfileById } from "@/lib/mock-data";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { format } from "date-fns";
 import type { Profile, Message } from "@shared/schema";
 
@@ -22,19 +24,60 @@ interface Conversation {
 
 export default function ManagerMessages() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   if (!user) return null;
 
-  const userMessages = mockMessages.filter(
-    (m) => m.senderId === user.id || m.receiverId === user.id
-  );
+  const { data: userMessages = [] } = useQuery({
+    queryKey: ["messages", user.id],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, sender_id, receiver_id, subject, content, is_read, created_at")
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.sender_id,
+        receiverId: m.receiver_id,
+        subject: m.subject,
+        content: m.content,
+        isRead: m.is_read,
+        createdAt: m.created_at,
+      })) as Message[];
+    },
+  });
+
+  const otherUserIds = Array.from(
+    new Set(
+      (userMessages as Message[]).map((m) => (m.senderId === user.id ? m.receiverId : m.senderId))
+    )
+  ).filter(Boolean) as string[];
+
+  const { data: otherUsers = [] } = useQuery({
+    queryKey: ["profiles", otherUserIds.join("-")],
+    enabled: isSupabaseConfigured && otherUserIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role")
+        .in("id", otherUserIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const otherById = Object.fromEntries((otherUsers as any[]).map((p) => [p.id, p]));
 
   const conversationMap = new Map<string, Conversation>();
-  userMessages.forEach((message) => {
+  (userMessages as Message[]).forEach((message) => {
     const otherUserId = message.senderId === user.id ? message.receiverId : message.senderId;
-    const otherUser = getProfileById(otherUserId);
+    const otherUser = otherById[otherUserId];
     if (!otherUser) return;
 
     const existing = conversationMap.get(otherUserId);
@@ -57,7 +100,7 @@ export default function ManagerMessages() {
     );
 
   const getThreadMessages = (otherUserId: string): Message[] => {
-    return userMessages
+    return (userMessages as Message[])
       .filter(
         (m) =>
           (m.senderId === user.id && m.receiverId === otherUserId) ||
@@ -68,8 +111,47 @@ export default function ManagerMessages() {
       );
   };
 
+  const markReadMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const { error } = await supabase
+        .from("messages")
+        .update({ is_read: true })
+        .in("id", ids);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["messages", user.id] });
+    },
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async (payload: { receiverId: string; content: string }) => {
+      const { error } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          receiver_id: payload.receiverId,
+          subject: null,
+          content: payload.content,
+        });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["messages", user.id] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to send message",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSendMessage = (content: string) => {
-    console.log("Sending message:", content);
+    if (!selectedConversation?.otherUser?.id) return;
+    sendMessageMutation.mutate({ receiverId: selectedConversation.otherUser.id, content });
   };
 
   return (
@@ -123,7 +205,20 @@ export default function ManagerMessages() {
                         "flex w-full items-start gap-3 p-4 text-left hover-elevate",
                         isSelected && "bg-accent"
                       )}
-                      onClick={() => setSelectedConversation(conv)}
+                      onClick={() => {
+                        setSelectedConversation(conv);
+                        const unreadIds = (userMessages as Message[])
+                          .filter((m) => {
+                            const otherId = m.senderId === user.id ? m.receiverId : m.senderId;
+                            return (
+                              otherId === conv.otherUser.id &&
+                              m.receiverId === user.id &&
+                              !m.isRead
+                            );
+                          })
+                          .map((m) => m.id);
+                        if (unreadIds.length > 0) markReadMutation.mutate(unreadIds);
+                      }}
                       data-testid={`conversation-${conv.otherUser.id}`}
                     >
                       <Avatar className="h-10 w-10">

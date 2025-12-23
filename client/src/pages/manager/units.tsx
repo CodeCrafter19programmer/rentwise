@@ -33,7 +33,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockUnits, mockProperties, mockLeases, getProfileById, getPropertyById } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { UnitStatus } from "@shared/schema";
 
 const unitFormSchema = z.object({
@@ -48,28 +50,94 @@ const unitFormSchema = z.object({
 type UnitFormData = z.infer<typeof unitFormSchema>;
 
 export default function ManagerUnits() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterProperty, setFilterProperty] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const filteredUnits = mockUnits.filter((unit) => {
-    const property = getPropertyById(unit.propertyId);
+  const { data: properties = [] } = useQuery({
+    queryKey: ["managerProperties", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name")
+        .eq("manager_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertyIds = (properties as any[]).map((p) => p.id);
+
+  const { data: units = [] } = useQuery({
+    queryKey: ["managerUnits", user?.id, propertyIds.join("-")],
+    enabled: isSupabaseConfigured && !!user?.id && propertyIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, property_id, unit_number, bedrooms, bathrooms, sqft, status, rent_amount")
+        .in("property_id", propertyIds);
+      if (error) throw error;
+      return (data || []).map((u: any) => ({
+        id: u.id,
+        propertyId: u.property_id,
+        unitNumber: u.unit_number,
+        bedrooms: u.bedrooms,
+        bathrooms: u.bathrooms,
+        sqft: u.sqft,
+        status: u.status,
+        rentAmount: String(u.rent_amount ?? "0"),
+      }));
+    },
+  });
+
+  const unitIds = (units as any[]).map((u) => u.id);
+
+  const { data: leases = [] } = useQuery({
+    queryKey: ["activeLeasesByManagerUnits", user?.id, unitIds.join("-")],
+    enabled: isSupabaseConfigured && !!user?.id && unitIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, is_active")
+        .in("unit_id", unitIds)
+        .eq("is_active", true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const tenantIds = Array.from(new Set((leases as any[]).map((l: any) => l.tenant_id).filter(Boolean)));
+
+  const { data: tenants = [] } = useQuery({
+    queryKey: ["tenantsByManagerUnits", user?.id, tenantIds.join("-")],
+    enabled: isSupabaseConfigured && !!user?.id && tenantIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", tenantIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertyById: Record<string, any> = Object.fromEntries((properties as any[]).map((p: any) => [p.id, p]));
+  const leaseByUnitId: Record<string, any> = Object.fromEntries((leases as any[]).map((l: any) => [l.unit_id, l]));
+  const tenantById: Record<string, any> = Object.fromEntries((tenants as any[]).map((t: any) => [t.id, t]));
+
+  const filteredUnits = (units as any[]).filter((unit: any) => {
+    const property = propertyById[unit.propertyId];
     const matchesSearch =
-      unit.unitNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      property?.name.toLowerCase().includes(searchQuery.toLowerCase());
+      (unit.unitNumber || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (property?.name || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === "all" || unit.status === filterStatus;
     const matchesProperty = filterProperty === "all" || unit.propertyId === filterProperty;
     return matchesSearch && matchesStatus && matchesProperty;
   });
-
-  const getTenantName = (unitId: string): string | undefined => {
-    const lease = mockLeases.find((l) => l.unitId === unitId && l.isActive);
-    if (!lease) return undefined;
-    const tenant = getProfileById(lease.tenantId);
-    return tenant?.name;
-  };
 
   const form = useForm<UnitFormData>({
     resolver: zodResolver(unitFormSchema),
@@ -138,7 +206,7 @@ export default function ManagerUnits() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {mockProperties.map((property) => (
+                            {(properties as any[]).map((property: any) => (
                               <SelectItem key={property.id} value={property.id}>
                                 {property.name}
                               </SelectItem>
@@ -249,7 +317,7 @@ export default function ManagerUnits() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Properties</SelectItem>
-              {mockProperties.map((property) => (
+              {(properties as any[]).map((property: any) => (
                 <SelectItem key={property.id} value={property.id}>
                   {property.name}
                 </SelectItem>
@@ -282,8 +350,9 @@ export default function ManagerUnits() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredUnits.map((unit) => {
-              const property = getPropertyById(unit.propertyId);
-              const tenantName = getTenantName(unit.id);
+              const property = propertyById[unit.propertyId];
+              const lease = leaseByUnitId[unit.id];
+              const tenantName = lease ? tenantById[lease.tenant_id]?.name : undefined;
               return (
                 <UnitCard
                   key={unit.id}

@@ -34,7 +34,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockPayments, mockLeases, getProfileById } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { Payment } from "@shared/schema";
 
 const recordPaymentSchema = z.object({
@@ -45,19 +47,80 @@ const recordPaymentSchema = z.object({
 type RecordPaymentData = z.infer<typeof recordPaymentSchema>;
 
 export default function ManagerPayments() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const filteredPayments = mockPayments.filter((payment) => {
+  const { data: properties = [] } = useQuery({
+    queryKey: ["managerProperties", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id")
+        .eq("manager_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertyIds = (properties as any[]).map((p) => p.id);
+
+  const { data: payments = [] } = useQuery({
+    queryKey: ["managerPayments", user?.id, propertyIds.join("-")],
+    enabled: isSupabaseConfigured && !!user?.id && propertyIds.length > 0,
+    queryFn: async () => {
+      // Load all payments and filter to manager's properties via leases->units->properties.
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, lease_id, amount, due_date, paid_at, status, payment_method");
+      if (error) throw error;
+      if (propertyIds.length === 0) return [];
+
+      const { data: leases, error: lerr } = await supabase
+        .from("leases")
+        .select("id, unit_id");
+      if (lerr) throw lerr;
+      const leaseUnit: Record<string, string> = Object.fromEntries((leases || []).map((l: any) => [l.id, l.unit_id]));
+
+      const unitIds = Array.from(new Set((data || []).map((p: any) => leaseUnit[p.lease_id]).filter(Boolean)));
+      if (unitIds.length === 0) return [];
+
+      const { data: unitsRows, error: uerr } = await supabase
+        .from("units")
+        .select("id, property_id")
+        .in("id", unitIds);
+      if (uerr) throw uerr;
+
+      const allowedUnitIds = new Set(
+        (unitsRows || []).filter((u: any) => propertyIds.includes(u.property_id)).map((u: any) => u.id)
+      );
+
+      return (data || [])
+        .filter((p: any) => allowedUnitIds.has(leaseUnit[p.lease_id]))
+        .map((p: any) => ({
+          id: p.id,
+          leaseId: p.lease_id,
+          amount: p.amount,
+          dueDate: p.due_date,
+          paidAt: p.paid_at,
+          status: p.status,
+          paymentMethod: p.payment_method,
+        })) as Payment[];
+    },
+  });
+
+  const filteredPayments = (payments as Payment[]).filter((payment) => {
     const matchesStatus = filterStatus === "all" || payment.status === filterStatus;
     return matchesStatus;
   });
 
-  const paidPayments = mockPayments.filter((p) => p.status === "paid");
-  const pendingPayments = mockPayments.filter((p) => p.status === "pending");
-  const overduePayments = mockPayments.filter((p) => p.status === "overdue");
+  const paidPayments = (payments as Payment[]).filter((p) => p.status === "paid");
+  const pendingPayments = (payments as Payment[]).filter((p) => p.status === "pending");
+  const overduePayments = (payments as Payment[]).filter((p) => p.status === "overdue");
 
   const totalCollected = paidPayments.reduce((sum, p) => sum + Number(p.amount), 0);
   const totalPending = pendingPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -85,14 +148,44 @@ export default function ManagerPayments() {
     setIsDialogOpen(true);
   };
 
+  const recordPaymentMutation = useMutation({
+    mutationFn: async (payload: { paymentId: string; amount: number; paymentMethod: string }) => {
+      const { error } = await supabase
+        .from("payments")
+        .update({
+          status: "paid",
+          paid_at: new Date().toISOString(),
+          payment_method: payload.paymentMethod,
+        })
+        .eq("id", payload.paymentId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["managerPayments", user?.id] });
+      toast({
+        title: "Payment recorded",
+        description: "Payment has been recorded successfully.",
+      });
+      setIsDialogOpen(false);
+      setSelectedPayment(null);
+      form.reset();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to record payment",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: RecordPaymentData) => {
-    toast({
-      title: "Payment recorded",
-      description: `Payment of ${formatCurrency(data.amount)} has been recorded.`,
+    if (!selectedPayment?.id) return;
+    recordPaymentMutation.mutate({
+      paymentId: selectedPayment.id,
+      amount: data.amount,
+      paymentMethod: data.paymentMethod,
     });
-    setIsDialogOpen(false);
-    setSelectedPayment(null);
-    form.reset();
   };
 
   return (

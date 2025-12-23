@@ -34,7 +34,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { Payment } from "@shared/schema";
 import { format } from "date-fns";
@@ -49,6 +49,7 @@ type PaymentFormData = z.infer<typeof paymentFormSchema>;
 export default function TenantPayments() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -124,14 +125,40 @@ export default function TenantPayments() {
     setIsDialogOpen(true);
   };
 
+  const payNowMutation = useMutation({
+    mutationFn: async (payload: { paymentId: string; paymentMethod: string }) => {
+      const { error } = await supabase
+        .from("payments")
+        .update({
+          status: "paid",
+          paid_at: new Date().toISOString(),
+          payment_method: payload.paymentMethod,
+        })
+        .eq("id", payload.paymentId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["payments", lease?.id] });
+      toast({
+        title: "Payment successful",
+        description: "Your payment has been processed.",
+      });
+      setIsDialogOpen(false);
+      setSelectedPayment(null);
+      form.reset();
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Payment failed",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: PaymentFormData) => {
-    toast({
-      title: "Payment successful",
-      description: `Your payment of ${formatCurrency(data.amount)} has been processed.`,
-    });
-    setIsDialogOpen(false);
-    setSelectedPayment(null);
-    form.reset();
+    if (!selectedPayment?.id) return;
+    payNowMutation.mutate({ paymentId: selectedPayment.id, paymentMethod: data.paymentMethod });
   };
 
   return (

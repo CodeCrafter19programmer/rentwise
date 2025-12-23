@@ -104,7 +104,7 @@ export default function AdminSettings() {
                     <Label htmlFor="phone">Phone</Label>
                     <Input
                       id="phone"
-                      defaultValue={user?.phone || ""}
+                      defaultValue={(user as any)?.phone || ""}
                       data-testid="input-profile-phone"
                     />
                   </div>
