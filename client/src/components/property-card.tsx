@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 interface PropertyCardProps {
   property: Property;
@@ -15,6 +15,7 @@ interface PropertyCardProps {
 export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
   const { data: units } = useQuery({
     queryKey: ["units", property.id],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("units")
@@ -30,7 +31,7 @@ export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
 
   const { data: managerRow } = useQuery({
     queryKey: ["manager", property.managerId],
-    enabled: !!property.managerId,
+    enabled: isSupabaseConfigured && !!property.managerId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")

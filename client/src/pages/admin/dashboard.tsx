@@ -7,13 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
 
   const { data: properties = [] } = useQuery({
     queryKey: ["properties"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("properties")
@@ -35,6 +36,7 @@ export default function AdminDashboard() {
 
   const { data: units = [] } = useQuery({
     queryKey: ["units"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("units")
@@ -46,6 +48,7 @@ export default function AdminDashboard() {
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
@@ -57,6 +60,7 @@ export default function AdminDashboard() {
 
   const { data: maintenance = [] } = useQuery({
     queryKey: ["maintenance", "open"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("maintenance_requests")
@@ -69,6 +73,7 @@ export default function AdminDashboard() {
 
   const { data: payments = [] } = useQuery({
     queryKey: ["payments", "recent"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payments")

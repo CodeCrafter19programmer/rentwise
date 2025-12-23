@@ -34,7 +34,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Building2 } from "lucide-react";
 
 const propertyFormSchema = z.object({
@@ -57,6 +57,7 @@ export default function AdminProperties() {
 
   const { data: managers = [] } = useQuery({
     queryKey: ["profiles", "managers"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
@@ -69,12 +70,22 @@ export default function AdminProperties() {
 
   const { data: properties = [], refetch } = useQuery({
     queryKey: ["properties"],
+    enabled: isSupabaseConfigured,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("properties")
-        .select("id, name, address, city, state, zipCode, managerId, totalUnits");
+        .select("id, name, address, city, state, zip_code, manager_id, total_units");
       if (error) throw error;
-      return data || [];
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        zipCode: p.zip_code,
+        managerId: p.manager_id,
+        totalUnits: p.total_units,
+      }));
     },
   });
 
@@ -107,9 +118,9 @@ export default function AdminProperties() {
         address: data.address,
         city: data.city,
         state: data.state,
-        zipCode: data.zipCode,
-        managerId: data.managerId || null,
-        totalUnits: 0,
+        zip_code: data.zipCode,
+        manager_id: data.managerId || null,
+        total_units: 0,
       };
       const { error } = await supabase.from("properties").insert(payload);
       if (error) throw error;
