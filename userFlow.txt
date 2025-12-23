@@ -1,0 +1,288 @@
+1. SYSTEM ROLES (fixed, non-negotiable)
+
+Role                   How they enter system         Power level
+Owner / Admin          Created at system setup       Full control
+Manager / Staff        Invited by Admin              Operational
+Tenant                 Invited & linked to a unit    Limited
+
+
+
+
+
+
+
+
+No public signup. One auth system. Roles enforced server-side.
+
+⸻
+
+2. FRONTEND — WHAT USERS SEE
+
+A. Shared Pages (ALL USERS)
+
+1️⃣ Landing Page (optional)
+	•	Product info
+	•	“Login” button
+	•	No “Register” button
+
+⸻
+
+2️⃣ Login Page
+
+Same page for everyone
+
+Fields
+	•	Email
+	•	Password
+
+Action
+POST /auth/login
+
+No role logic here. Just authentication.
+
+⸻
+
+3️⃣ Registration Page (Invite-only)
+
+User arrives via link:
+/register?token=XYZ
+
+Fields
+	•	Name
+	•	Password
+	•	Confirm password
+
+Hidden logic
+	•	Token already maps to role + property/unit
+
+User does NOT choose anything.
+
+⸻
+
+B. Role-Specific Dashboards (after login)
+
+⸻
+
+🧑‍💼 Admin / Owner Dashboard
+
+Main sections
+	•	Properties
+	•	Units
+	•	Tenants
+	•	Staff
+	•	Payments
+	•	Reports
+	•	Settings
+
+Key actions
+	•	Create property
+	•	Create units
+	•	Invite managers
+	•	Invite tenants
+	•	View all payments
+	•	Export reports
+
+⸻
+
+🧑‍🔧 Manager / Staff Dashboard
+
+Restricted version of Admin
+	•	View assigned properties
+	•	Handle maintenance
+	•	View tenant payments (read-only)
+	•	Message tenants
+
+Cannot:
+	•	Delete properties
+	•	Change system settings
+
+⸻
+
+🧑‍🦱 Tenant Dashboard
+
+Very minimal
+	•	My Unit
+	•	Rent Status
+	•	Payment History
+	•	Maintenance Requests
+	•	Messages
+
+Cannot see:
+	•	Other tenants
+	•	Other units
+	•	Property finances
+
+⸻
+
+3. BACKEND — CORE SERVICES
+
+A. Authentication Service
+
+Login
+POST /auth/login
+
+Flow
+Verify credentials
+↓
+Create session / JWT
+↓
+Attach user_id + role
+
+Register (Invite-only)
+POST /auth/register
+
+Backend logic
+
+Validate invite token
+↓
+Extract role + property_id + unit_id
+↓
+Create user
+↓
+Mark invite as used
+
+B. Invitation Service (critical)
+
+Invite Tenant
+
+POST /invites
+
+Payload{
+  "email": "tenant@mail.com",
+  "role": "tenant",
+  "unit_id": 12
+}
+
+Backend
+	•	Generates token
+	•	Stores role + unit
+	•	Sends email/SMS
+
+C. Property & Unit Service
+
+Admin → Property → Units → Tenants
+
+Strict hierarchy.
+
+
+D. Payments Service
+	•	Records rent payments
+	•	Tracks due dates
+	•	Flags late rent
+	•	Optional mobile money / card integration
+
+Tenants can only see their own records.
+
+⸻
+
+E. Maintenance Service
+
+Tenants submit requests → Staff/Admin manage them.
+
+⸻
+
+4. DATABASE — STRUCTURE (CORE TABLES)
+
+users
+- id
+- name
+- email
+- password
+- role (admin | staff | tenant)
+
+properties
+- id
+- name
+- owner_id
+
+units
+- id
+- property_id
+- unit_number
+- rent_amount
+
+tenancies
+- id
+- user_id
+- unit_id
+- start_date
+- status
+
+invites
+- id
+- email
+- role
+- unit_id
+- token
+- used
+
+payments
+- id
+- tenancy_id
+- amount
+- status
+- paid_at
+
+This structure enforces real-world rental logic.
+
+5. DATA FLOW (MENTAL IMAGE)
+
+Tenant onboarding
+
+Admin creates unit
+↓
+Admin invites tenant
+↓
+Tenant clicks link
+↓
+Tenant registers
+↓
+Tenant logs in
+↓
+Tenant sees only their unit
+
+Login flow (all users)
+
+User submits login
+↓
+Backend authenticates
+↓
+Session contains role
+↓
+Frontend routes user
+
+Authorization (important)
+Request → Middleware
+↓
+Check role
+↓
+Allow / deny
+
+Frontend routing is cosmetic.
+Backend authorization is law.
+
+
+6. WHY THIS DESIGN WINS
+
+✅ Secure
+✅ Matches real rental business
+✅ Prevents role abuse
+✅ Easy to scale to SaaS
+✅ Easy to audit
+✅ Easy to explain to investors & clients
+
+7. COMMON MISTAKES TO AVOID
+
+❌ Public tenant signup
+❌ Role dropdown
+❌ Frontend-only protection
+❌ One dashboard for all roles
+❌ Letting tenants create accounts first
+
+FINAL SUMMARY (KEEP THIS)
+
+One auth system.
+Invite-based registration.
+Backend-enforced roles.
+Separate dashboards.
+Strict data boundaries.

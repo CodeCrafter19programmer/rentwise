@@ -35,6 +35,8 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
+import type { Profile, Property } from "@shared/schema";
 import { Building2 } from "lucide-react";
 
 const propertyFormSchema = z.object({
@@ -132,7 +134,7 @@ export default function AdminProperties() {
       toast({ title: "Property created" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to create property", description: String(err?.message || err), variant: "destructive" });
+      toast({ title: "Failed to create property", description: getSupabaseErrorMessage(err), variant: "destructive" });
     },
   });
 

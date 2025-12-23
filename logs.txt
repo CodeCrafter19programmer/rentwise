@@ -1,0 +1,10 @@
+10:46:23.945 Running build in Washington, D.C., USA (East) – iad1
+10:46:23.946 Build machine configuration: 2 cores, 8 GB
+10:46:24.276 Cloning github.com/CodeCrafter19programmer/rentwise (Branch: main, Commit: 4f12247)
+10:46:24.283 Previous build caches not available.
+10:46:24.735 Cloning completed: 458.000ms
+10:46:24.852 Found .vercelignore
+10:46:24.857 Removed 1 ignored files defined in .vercelignore
+10:46:24.860   /attached_assets/Pasted--PART-1-MASTER-AI-PROMPT-FOR-REPLIT-AI-CODING-ASSISTANT_1766056975098.txt
+10:46:26.024 Error: Node.js Version "18.x" is discontinued and must be upgraded. Please set "engines": { "node": "24.x" } in your `package.json` file to use Node.js 24. Learn More: http://vercel.link/node-version
+10:46:26.174 Node.js Version "18.x" is discontinued and must be upgraded. Please set "engines": { "node": "24.x" } in your `package.json` file to use Node.js 24.

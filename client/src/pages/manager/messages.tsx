@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
 import { format } from "date-fns";
 import type { Profile, Message } from "@shared/schema";
 
@@ -123,6 +124,13 @@ export default function ManagerMessages() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["messages", user.id] });
     },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to update message",
+        description: getSupabaseErrorMessage(err),
+        variant: "destructive",
+      });
+    },
   });
 
   const sendMessageMutation = useMutation({
@@ -143,7 +151,7 @@ export default function ManagerMessages() {
     onError: (err: any) => {
       toast({
         title: "Failed to send message",
-        description: err?.message || "Please try again.",
+        description: getSupabaseErrorMessage(err),
         variant: "destructive",
       });
     },

@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
 import type { Payment } from "@shared/schema";
 
 const recordPaymentSchema = z.object({
@@ -173,7 +174,7 @@ export default function ManagerPayments() {
     onError: (err: any) => {
       toast({
         title: "Failed to record payment",
-        description: err?.message || "Please try again.",
+        description: getSupabaseErrorMessage(err),
         variant: "destructive",
       });
     },

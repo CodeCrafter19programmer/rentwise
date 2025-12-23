@@ -39,6 +39,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
+import type { MaintenanceRequest } from "@shared/schema";
+import { format } from "date-fns";
 
 const maintenanceFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -150,7 +153,7 @@ export default function TenantMaintenance() {
     onError: (err: any) => {
       toast({
         title: "Failed to submit request",
-        description: err?.message || "Please try again.",
+        description: getSupabaseErrorMessage(err),
         variant: "destructive",
       });
     },
