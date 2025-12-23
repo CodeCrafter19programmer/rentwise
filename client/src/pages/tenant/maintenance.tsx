@@ -37,7 +37,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { getMaintenanceByTenantId, getUnitById, getLeaseByTenantId } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const maintenanceFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -52,9 +53,60 @@ export default function TenantMaintenance() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const requests = user ? getMaintenanceByTenantId(user.id) : [];
-  const lease = user ? getLeaseByTenantId(user.id) : null;
-  const unit = lease ? getUnitById(lease.unitId) : null;
+  const { data: lease } = useQuery({
+    queryKey: ["tenantLease", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, is_active")
+        .eq("tenant_id", user!.id)
+        .eq("is_active", true)
+        .limit(1);
+      if (error) throw error;
+      const row = (data || [])[0];
+      if (!row) return null as any;
+      return { id: row.id, unitId: row.unit_id, tenantId: row.tenant_id, isActive: row.is_active } as any;
+    },
+  });
+
+  const { data: unit } = useQuery({
+    queryKey: ["unit", lease?.unitId],
+    enabled: isSupabaseConfigured && !!lease?.unitId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, unit_number")
+        .eq("id", lease!.unitId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: requests = [] } = useQuery({
+    queryKey: ["tenantMaintenance", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("maintenance_requests")
+        .select("id, unit_id, tenant_id, title, description, priority, status, created_at, resolved_at")
+        .eq("tenant_id", user!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map((r: any) => ({
+        id: r.id,
+        unitId: r.unit_id,
+        tenantId: r.tenant_id,
+        title: r.title,
+        description: r.description,
+        priority: r.priority,
+        status: r.status,
+        createdAt: r.created_at,
+        resolvedAt: r.resolved_at,
+      }));
+    },
+  });
 
   const openRequests = requests.filter((r) => r.status === "open");
   const inProgressRequests = requests.filter((r) => r.status === "in_progress");
@@ -91,7 +143,7 @@ export default function TenantMaintenance() {
           <div>
             <h1 className="text-2xl font-bold">Maintenance Requests</h1>
             <p className="text-muted-foreground">
-              {unit ? `Unit ${unit.unitNumber}` : "Submit and track maintenance requests"}
+              {unit ? `Unit ${unit.unit_number}` : "Submit and track maintenance requests"}
             </p>
           </div>
 
@@ -239,7 +291,7 @@ export default function TenantMaintenance() {
                   <MaintenanceCard
                     key={request.id}
                     request={request}
-                    unitNumber={unit?.unitNumber}
+                    unitNumber={unit?.unit_number}
                     onView={() => {}}
                   />
                 ))}
@@ -261,7 +313,7 @@ export default function TenantMaintenance() {
                   <MaintenanceCard
                     key={request.id}
                     request={request}
-                    unitNumber={unit?.unitNumber}
+                    unitNumber={unit?.unit_number}
                     onView={() => {}}
                   />
                 ))}
@@ -283,7 +335,7 @@ export default function TenantMaintenance() {
                   <MaintenanceCard
                     key={request.id}
                     request={request}
-                    unitNumber={unit?.unitNumber}
+                    unitNumber={unit?.unit_number}
                     onView={() => {}}
                   />
                 ))}

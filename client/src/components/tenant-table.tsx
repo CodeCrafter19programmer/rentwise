@@ -10,27 +10,16 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Profile, Lease } from "@shared/schema";
-import { mockLeases, getUnitById, getPropertyById } from "@/lib/mock-data";
+import type { Profile } from "@shared/schema";
 
 interface TenantTableProps {
   tenants: Profile[];
+  leaseInfoByTenant?: Record<string, { propertyName?: string; unitNumber?: string } | null>;
   onView?: (tenant: Profile) => void;
   onMessage?: (tenant: Profile) => void;
 }
 
-export function TenantTable({ tenants, onView, onMessage }: TenantTableProps) {
-  const getTenantLease = (tenantId: string): Lease | undefined => {
-    return mockLeases.find((l) => l.tenantId === tenantId && l.isActive);
-  };
-
-  const getUnitInfo = (lease: Lease | undefined) => {
-    if (!lease) return null;
-    const unit = getUnitById(lease.unitId);
-    if (!unit) return null;
-    const property = getPropertyById(unit.propertyId);
-    return { unit, property };
-  };
+export function TenantTable({ tenants, leaseInfoByTenant, onView, onMessage }: TenantTableProps) {
 
   return (
     <div className="rounded-lg border">
@@ -53,8 +42,7 @@ export function TenantTable({ tenants, onView, onMessage }: TenantTableProps) {
             </TableRow>
           ) : (
             tenants.map((tenant) => {
-              const lease = getTenantLease(tenant.id);
-              const unitInfo = getUnitInfo(lease);
+              const info = leaseInfoByTenant?.[tenant.id] || null;
               const initials = tenant.name
                 .split(" ")
                 .map((n) => n[0])
@@ -88,11 +76,11 @@ export function TenantTable({ tenants, onView, onMessage }: TenantTableProps) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {unitInfo ? (
+                    {info ? (
                       <div className="flex items-center gap-1 text-sm">
                         <Home className="h-4 w-4 text-muted-foreground" />
                         <span>
-                          {unitInfo.property?.name} - Unit {unitInfo.unit.unitNumber}
+                          {info.propertyName} - Unit {info.unitNumber}
                         </span>
                       </div>
                     ) : (
@@ -100,7 +88,7 @@ export function TenantTable({ tenants, onView, onMessage }: TenantTableProps) {
                     )}
                   </TableCell>
                   <TableCell>
-                    {lease ? (
+                    {info ? (
                       <Badge variant="default">Active Lease</Badge>
                     ) : (
                       <Badge variant="secondary">No Lease</Badge>

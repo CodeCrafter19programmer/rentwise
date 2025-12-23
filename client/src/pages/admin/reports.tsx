@@ -21,19 +21,106 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { mockProperties, mockExpenses, getMonthlyFinancials, getDashboardStats } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { format } from "date-fns";
 
 export default function AdminReports() {
   const [selectedProperty, setSelectedProperty] = useState<string>("all");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("year");
 
-  const stats = getDashboardStats("admin");
-  const financialData = getMonthlyFinancials("all");
+  const { data: properties = [] } = useQuery({
+    queryKey: ["adminProperties"],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const filteredExpenses = selectedProperty === "all"
-    ? mockExpenses
-    : mockExpenses.filter((e) => e.propertyId === selectedProperty);
+  const propertyFilter = selectedProperty === "all" ? undefined : selectedProperty;
+
+  const { data: expenses = [] } = useQuery({
+    queryKey: ["expenses", propertyFilter],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      let query = supabase
+        .from("expenses")
+        .select("id, property_id, category, description, amount, date");
+      if (propertyFilter) query = query.eq("property_id", propertyFilter);
+      const { data, error } = await query.order("date", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ["units", propertyFilter],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      let query = supabase.from("units").select("id, status, property_id");
+      if (propertyFilter) query = query.eq("property_id", propertyFilter);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const occupiedUnits = (units as any[]).filter((u) => u.status === "occupied").length;
+  const totalUnits = (units as any[]).length;
+
+  const { data: payments = [] } = useQuery({
+    queryKey: ["paymentsAll", propertyFilter],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      // load base payments
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, amount, due_date, lease_id");
+      if (error) throw error;
+      if (!propertyFilter) return data || [];
+      // filter payments to property by joining leases -> units -> property
+      const { data: leases, error: lerr } = await supabase
+        .from("leases")
+        .select("id, unit_id");
+      if (lerr) throw lerr;
+      const leaseUnit: Record<string, string> = Object.fromEntries((leases || []).map((l: any) => [l.id, l.unit_id]));
+      const unitIds = Array.from(new Set((data || []).map((p: any) => leaseUnit[p.lease_id]).filter(Boolean)));
+      const { data: unitsRows, error: uerr } = await supabase
+        .from("units")
+        .select("id, property_id")
+        .in("id", unitIds);
+      if (uerr) throw uerr;
+      const allowedUnitIds = new Set((unitsRows || []).filter((u: any) => u.property_id === propertyFilter).map((u: any) => u.id));
+      return (data || []).filter((p: any) => allowedUnitIds.has(leaseUnit[p.lease_id]));
+    },
+  });
+
+  // Aggregate monthly income from payments and combine with expenses monthly totals
+  const paymentsByMonth: Record<string, number> = {};
+  (payments as any[]).forEach((p: any) => {
+    const d = new Date(p.due_date);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    paymentsByMonth[key] = (paymentsByMonth[key] || 0) + Number(p.amount || 0);
+  });
+
+  const expensesByMonth: Record<string, number> = {};
+  (expenses as any[]).forEach((e: any) => {
+    const d = new Date(e.date);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    expensesByMonth[key] = (expensesByMonth[key] || 0) + Number(e.amount || 0);
+  });
+
+  const financialData = Object.keys({ ...paymentsByMonth, ...expensesByMonth })
+    .sort()
+    .map((month) => ({
+      month,
+      income: paymentsByMonth[month] || 0,
+      expenses: expensesByMonth[month] || 0,
+    }));
 
   const totalIncome = financialData.reduce((sum, m) => sum + m.income, 0);
   const totalExpenses = financialData.reduce((sum, m) => sum + m.expenses, 0);
@@ -47,7 +134,11 @@ export default function AdminReports() {
     }).format(value);
   };
 
-  const expensesByCategory = filteredExpenses.reduce((acc, expense) => {
+  const filteredExpenses = selectedProperty === "all"
+    ? (expenses as any[])
+    : (expenses as any[]).filter((e: any) => e.property_id === selectedProperty);
+
+  const expensesByCategory = (filteredExpenses as any[]).reduce((acc: Record<string, number>, expense: any) => {
     const category = expense.category;
     acc[category] = (acc[category] || 0) + Number(expense.amount);
     return acc;
@@ -78,7 +169,7 @@ export default function AdminReports() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Properties</SelectItem>
-                {mockProperties.map((property) => (
+                {properties.map((property: any) => (
                   <SelectItem key={property.id} value={property.id}>
                     {property.name}
                   </SelectItem>
@@ -129,9 +220,9 @@ export default function AdminReports() {
           />
           <StatCard
             title="Occupancy Rate"
-            value={`${Math.round((stats.occupiedUnits / stats.totalUnits) * 100)}%`}
+            value={totalUnits > 0 ? `${Math.round((occupiedUnits / totalUnits) * 100)}%` : "—"}
             icon={Home}
-            description={`${stats.occupiedUnits} of ${stats.totalUnits} units`}
+            description={totalUnits > 0 ? `${occupiedUnits} of ${totalUnits} units` : "Units not loaded"}
             testId="stat-occupancy"
           />
         </div>
@@ -189,8 +280,8 @@ export default function AdminReports() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExpenses.slice(0, 10).map((expense) => {
-                  const property = mockProperties.find((p) => p.id === expense.propertyId);
+                {filteredExpenses.slice(0, 10).map((expense: any) => {
+                  const property = (properties as any[]).find((p: any) => p.id === expense.property_id);
                   return (
                     <TableRow key={expense.id} data-testid={`row-expense-${expense.id}`}>
                       <TableCell className="text-muted-foreground">

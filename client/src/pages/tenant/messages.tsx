@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { mockMessages, getProfileById, getLeaseByTenantId, getUnitById, getPropertyById } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { format } from "date-fns";
 import type { Profile, Message } from "@shared/schema";
 
@@ -27,19 +28,113 @@ export default function TenantMessages() {
 
   if (!user) return null;
 
-  const lease = getLeaseByTenantId(user.id);
-  const unit = lease ? getUnitById(lease.unitId) : null;
-  const property = unit ? getPropertyById(unit.propertyId) : null;
-  const manager = property?.managerId ? getProfileById(property.managerId) : null;
+  const { data: lease } = useQuery({
+    queryKey: ["tenantLease", user.id],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, is_active")
+        .eq("tenant_id", user.id)
+        .eq("is_active", true)
+        .limit(1);
+      if (error) throw error;
+      const row = (data || [])[0];
+      if (!row) return null as any;
+      return { id: row.id, unitId: row.unit_id, tenantId: row.tenant_id } as any;
+    },
+  });
 
-  const userMessages = mockMessages.filter(
-    (m) => m.senderId === user.id || m.receiverId === user.id
-  );
+  const { data: unit } = useQuery({
+    queryKey: ["unit", lease?.unitId],
+    enabled: isSupabaseConfigured && !!lease?.unitId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, property_id")
+        .eq("id", lease!.unitId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
 
+  const { data: property } = useQuery({
+    queryKey: ["property", unit?.property_id],
+    enabled: isSupabaseConfigured && !!unit?.property_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, manager_id")
+        .eq("id", unit!.property_id)
+        .single();
+      if (error) throw error;
+      const p = data as any;
+      return { id: p.id, name: p.name, managerId: p.manager_id } as any;
+    },
+  });
+
+  const { data: manager } = useQuery({
+    queryKey: ["manager", property?.managerId],
+    enabled: isSupabaseConfigured && !!property?.managerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role")
+        .eq("id", property!.managerId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: userMessages = [] } = useQuery({
+    queryKey: ["messages", user.id],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, sender_id, receiver_id, subject, content, is_read, created_at")
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.sender_id,
+        receiverId: m.receiver_id,
+        subject: m.subject,
+        content: m.content,
+        isRead: m.is_read,
+        createdAt: m.created_at,
+      })) as Message[];
+    },
+  });
+
+  // Batch load other user profiles referenced by messages
+  const otherUserIds = Array.from(
+    new Set(
+      (userMessages as Message[]).map((m) => (m.senderId === user.id ? m.receiverId : m.senderId))
+    )
+  ).filter(Boolean) as string[];
+
+  const { data: otherUsers = [] } = useQuery({
+    queryKey: ["profiles", otherUserIds.join("-")],
+    enabled: isSupabaseConfigured && otherUserIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role")
+        .in("id", otherUserIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const otherById = Object.fromEntries((otherUsers as any[]).map((p) => [p.id, p]));
   const conversationMap = new Map<string, Conversation>();
-  userMessages.forEach((message) => {
+  (userMessages as Message[]).forEach((message) => {
     const otherUserId = message.senderId === user.id ? message.receiverId : message.senderId;
-    const otherUser = getProfileById(otherUserId);
+    const otherUser = otherById[otherUserId];
     if (!otherUser) return;
 
     const existing = conversationMap.get(otherUserId);
@@ -47,7 +142,8 @@ export default function TenantMessages() {
       conversationMap.set(otherUserId, {
         otherUser,
         lastMessage: message,
-        unreadCount: existing ? existing.unreadCount + (!message.isRead && message.receiverId === user.id ? 1 : 0)
+        unreadCount: existing
+          ? existing.unreadCount + (!message.isRead && message.receiverId === user.id ? 1 : 0)
           : (!message.isRead && message.receiverId === user.id ? 1 : 0),
       });
     }
@@ -62,7 +158,7 @@ export default function TenantMessages() {
     );
 
   const getThreadMessages = (otherUserId: string): Message[] => {
-    return userMessages
+    return (userMessages as Message[])
       .filter(
         (m) =>
           (m.senderId === user.id && m.receiverId === otherUserId) ||

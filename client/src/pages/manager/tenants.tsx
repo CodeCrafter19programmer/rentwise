@@ -26,7 +26,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockProfiles } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 const tenantFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -40,12 +42,79 @@ export default function ManagerTenants() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const tenants = mockProfiles.filter((p) => p.role === "tenant");
+  const { data: tenants = [] } = useQuery({
+    queryKey: ["profiles", "tenants"],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role, phone")
+        .eq("role", "tenant");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const filteredTenants = tenants.filter((tenant) =>
-    tenant.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    tenant.email.toLowerCase().includes(searchQuery.toLowerCase())
+  // Manager's properties, units, and active leases to build lease info mapping
+  const { data: properties = [] } = useQuery({
+    queryKey: ["managerProperties", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name, manager_id")
+        .eq("manager_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertyIds = (properties as any[]).map((p) => p.id);
+
+  const { data: units = [] } = useQuery({
+    queryKey: ["unitsByManager", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id && propertyIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, property_id, unit_number")
+        .in("property_id", propertyIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const unitIds = (units as any[]).map((u) => u.id);
+
+  const { data: leases = [] } = useQuery({
+    queryKey: ["activeLeasesByManager", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id && unitIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, is_active")
+        .in("unit_id", unitIds)
+        .eq("is_active", true);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const propertyById: Record<string, any> = Object.fromEntries((properties as any[]).map((p) => [p.id, p]));
+  const unitById: Record<string, any> = Object.fromEntries((units as any[]).map((u) => [u.id, u]));
+  const leaseInfoByTenant = Object.fromEntries(
+    (leases as any[]).map((l: any) => {
+      const u = unitById[l.unit_id];
+      const p = u ? propertyById[u.property_id] : null;
+      return [l.tenant_id, { propertyName: p?.name, unitNumber: u?.unit_number }];
+    })
+  );
+
+  const filteredTenants = (tenants as any[]).filter((tenant) =>
+    (tenant.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (tenant.email || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const form = useForm<TenantFormData>({
@@ -175,6 +244,7 @@ export default function ManagerTenants() {
         ) : (
           <TenantTable
             tenants={filteredTenants}
+            leaseInfoByTenant={leaseInfoByTenant}
             onView={() => {}}
             onMessage={() => {}}
           />

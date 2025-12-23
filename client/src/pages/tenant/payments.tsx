@@ -34,7 +34,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { getLeaseByTenantId, getPaymentsByLeaseId } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { Payment } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -51,8 +52,50 @@ export default function TenantPayments() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const lease = user ? getLeaseByTenantId(user.id) : null;
-  const payments = lease ? getPaymentsByLeaseId(lease.id) : [];
+  const { data: lease } = useQuery({
+    queryKey: ["tenantLease", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, rent_amount, is_active")
+        .eq("tenant_id", user!.id)
+        .eq("is_active", true)
+        .limit(1);
+      if (error) throw error;
+      const row = (data || [])[0];
+      if (!row) return null as any;
+      return {
+        id: row.id,
+        unitId: row.unit_id,
+        tenantId: row.tenant_id,
+        rentAmount: row.rent_amount,
+        isActive: row.is_active,
+      } as any;
+    },
+  });
+
+  const { data: payments = [] } = useQuery({
+    queryKey: ["payments", lease?.id],
+    enabled: isSupabaseConfigured && !!lease?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, amount, due_date, paid_at, status, payment_method")
+        .eq("lease_id", lease!.id)
+        .order("due_date", { ascending: true });
+      if (error) throw error;
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        leaseId: lease!.id,
+        amount: p.amount,
+        dueDate: p.due_date,
+        paidAt: p.paid_at,
+        status: p.status,
+        paymentMethod: p.payment_method,
+      })) as Payment[];
+    },
+  });
 
   const pendingPayments = payments.filter((p) => p.status === "pending" || p.status === "overdue");
   const paidPayments = payments.filter((p) => p.status === "paid");
