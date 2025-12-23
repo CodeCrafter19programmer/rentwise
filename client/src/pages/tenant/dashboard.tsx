@@ -8,24 +8,102 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
-import {
-  getDashboardStats,
-  getLeaseByTenantId,
-  getMaintenanceByTenantId,
-  getUnitById,
-  getPropertyById,
-} from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { format, differenceInDays } from "date-fns";
 
 export default function TenantDashboard() {
   const { user } = useAuth();
-  const stats = getDashboardStats("tenant", user?.id);
-  const lease = user ? getLeaseByTenantId(user.id) : null;
-  const maintenanceRequests = user ? getMaintenanceByTenantId(user.id) : [];
-  const openMaintenance = maintenanceRequests.filter((m) => m.status !== "resolved");
 
-  const unit = lease ? getUnitById(lease.unitId) : null;
-  const property = unit ? getPropertyById(unit.propertyId) : null;
+  const { data: lease } = useQuery({
+    queryKey: ["tenantLease", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, start_date, end_date, rent_amount, is_active")
+        .eq("tenant_id", user!.id)
+        .eq("is_active", true)
+        .limit(1);
+      if (error) throw error;
+      const row = (data || [])[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        unitId: row.unit_id,
+        tenantId: row.tenant_id,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        rentAmount: row.rent_amount,
+        isActive: row.is_active,
+      } as any;
+    },
+  });
+
+  const { data: unit } = useQuery({
+    queryKey: ["unit", lease?.unitId],
+    enabled: isSupabaseConfigured && !!lease?.unitId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, unit_number, property_id")
+        .eq("id", lease!.unitId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: property } = useQuery({
+    queryKey: ["property", unit?.property_id],
+    enabled: isSupabaseConfigured && !!unit?.property_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name")
+        .eq("id", unit!.property_id)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: payments = [] } = useQuery({
+    queryKey: ["payments", lease?.id],
+    enabled: isSupabaseConfigured && !!lease?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("id, amount, due_date, paid_at, status")
+        .eq("lease_id", lease!.id)
+        .order("due_date", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: maintenanceRequests = [] } = useQuery({
+    queryKey: ["maintenance", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("maintenance_requests")
+        .select("id, unit_id, tenant_id, title, description, status")
+        .eq("tenant_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const openMaintenance = (maintenanceRequests as any[]).filter((m) => m.status !== "resolved");
+
+  // Compute tenant-facing stats
+  const currentRent = lease?.rentAmount || 0;
+  const nextPending = (payments as any[]).find((p) => p.status === "pending" || p.status === "overdue");
+  const nextPaymentDue = nextPending?.due_date || null;
+  const amountDue = nextPending?.amount || 0;
+  const leaseEndDate = lease?.endDate || null;
+  const paymentHistory = (payments as any[]).map((p) => ({ id: p.id, amount: p.amount, dueDate: p.due_date, status: p.status }));
 
   const formatCurrency = (value: string | number) => {
     return new Intl.NumberFormat("en-US", {
@@ -35,8 +113,8 @@ export default function TenantDashboard() {
     }).format(Number(value));
   };
 
-  const daysUntilPayment = stats.nextPaymentDue
-    ? differenceInDays(new Date(stats.nextPaymentDue), new Date())
+  const daysUntilPayment = nextPaymentDue
+    ? differenceInDays(new Date(nextPaymentDue), new Date())
     : null;
 
   const isPaymentDueSoon = daysUntilPayment !== null && daysUntilPayment <= 7 && daysUntilPayment > 0;
@@ -51,7 +129,7 @@ export default function TenantDashboard() {
           </h1>
           <p className="text-muted-foreground">
             {property && unit ? (
-              <>Your home at {property.name}, Unit {unit.unitNumber}</>
+              <>Your home at {property.name}, Unit {unit.unit_number}</>
             ) : (
               <>Manage your rental from here</>
             )}
@@ -101,26 +179,26 @@ export default function TenantDashboard() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Monthly Rent"
-            value={formatCurrency(stats.currentRent)}
+            value={formatCurrency(currentRent)}
             icon={DollarSign}
             testId="stat-monthly-rent"
           />
           <StatCard
             title="Next Payment Due"
-            value={stats.nextPaymentDue ? format(new Date(stats.nextPaymentDue), "MMM d") : "—"}
+            value={nextPaymentDue ? format(new Date(nextPaymentDue), "MMM d") : "—"}
             icon={Calendar}
-            description={stats.nextPaymentDue ? formatCurrency(stats.amountDue) : "No payment due"}
+            description={nextPaymentDue ? formatCurrency(amountDue) : "No payment due"}
             testId="stat-next-payment"
           />
           <StatCard
             title="Lease Ends"
-            value={stats.leaseEndDate ? format(new Date(stats.leaseEndDate), "MMM d, yyyy") : "—"}
+            value={leaseEndDate ? format(new Date(leaseEndDate), "MMM d, yyyy") : "—"}
             icon={FileText}
             testId="stat-lease-end"
           />
           <StatCard
             title="Open Requests"
-            value={stats.openMaintenanceRequests}
+            value={openMaintenance.length}
             icon={Wrench}
             description="Maintenance requests"
             testId="stat-open-requests"
@@ -159,13 +237,13 @@ export default function TenantDashboard() {
             </div>
             <Card>
               <CardContent className="p-0">
-                {stats.paymentHistory.length === 0 ? (
+                {paymentHistory.length === 0 ? (
                   <div className="flex h-48 items-center justify-center text-muted-foreground">
                     No payment history
                   </div>
                 ) : (
                   <div className="divide-y">
-                    {stats.paymentHistory.slice(0, 3).map((payment: any) => (
+                    {paymentHistory.slice(0, 3).map((payment: any) => (
                       <div key={payment.id} className="flex items-center justify-between p-4">
                         <div>
                           <p className="font-medium">

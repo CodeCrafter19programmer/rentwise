@@ -33,7 +33,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { mockLeases, mockUnits, mockProfiles, getProfileById, getPropertyById } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 const leaseFormSchema = z.object({
   unitId: z.string().min(1, "Unit is required"),
@@ -51,13 +53,98 @@ export default function ManagerLeases() {
   const [filterStatus, setFilterStatus] = useState<string>("active");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const tenants = mockProfiles.filter((p) => p.role === "tenant");
-  const vacantUnits = mockUnits.filter((u) => u.status === "vacant");
+  // Properties managed by current user
+  const { data: properties = [] } = useQuery({
+    queryKey: ["properties", "manager", user?.id],
+    enabled: isSupabaseConfigured && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name")
+        .eq("manager_id", user!.id);
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const filteredLeases = mockLeases.filter((lease) => {
-    const tenant = getProfileById(lease.tenantId);
-    const matchesSearch = tenant?.name.toLowerCase().includes(searchQuery.toLowerCase());
+  const propertyIds = (properties as any[]).map((p) => p.id);
+
+  // Vacant units under those properties
+  const { data: vacantUnits = [] } = useQuery({
+    queryKey: ["units", "vacant", { propertyIds }],
+    enabled: isSupabaseConfigured && propertyIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, unit_number, property_id, status")
+        .in("property_id", propertyIds)
+        .eq("status", "vacant");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // All units to scope leases
+  const { data: allUnits = [] } = useQuery({
+    queryKey: ["units", { propertyIds }],
+    enabled: isSupabaseConfigured && propertyIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, property_id")
+        .in("property_id", propertyIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const unitIds = (allUnits as any[]).map((u) => u.id);
+
+  // Tenants list (for form and filtering)
+  const { data: tenants = [] } = useQuery({
+    queryKey: ["profiles", "tenants"],
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name, email, role")
+        .eq("role", "tenant");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Leases for those units
+  const { data: leases = [] } = useQuery({
+    queryKey: ["leases", { unitIds }],
+    enabled: isSupabaseConfigured && unitIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leases")
+        .select("id, unit_id, tenant_id, start_date, end_date, rent_amount, security_deposit, is_active")
+        .in("unit_id", unitIds);
+      if (error) throw error;
+      return (data || []).map((l: any) => ({
+        id: l.id,
+        unitId: l.unit_id,
+        tenantId: l.tenant_id,
+        startDate: l.start_date,
+        endDate: l.end_date,
+        rentAmount: l.rent_amount,
+        securityDeposit: l.security_deposit,
+        isActive: l.is_active,
+      }));
+    },
+  });
+
+  const tenantMap = new Map((tenants as any[]).map((t) => [t.id, t]));
+  const propertiesMap = new Map((properties as any[]).map((p) => [p.id, p]));
+
+  const filteredLeases = (leases as any[]).filter((lease) => {
+    const tenant = tenantMap.get(lease.tenantId);
+    const matchesSearch = (tenant?.name || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
       filterStatus === "all" ||
       (filterStatus === "active" && lease.isActive) ||
@@ -133,14 +220,11 @@ export default function ManagerLeases() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {vacantUnits.map((unit) => {
-                                const property = getPropertyById(unit.propertyId);
-                                return (
-                                  <SelectItem key={unit.id} value={unit.id}>
-                                    {property?.name} - Unit {unit.unitNumber}
-                                  </SelectItem>
-                                );
-                              })}
+                              {(vacantUnits as any[]).map((unit: any) => (
+                                <SelectItem key={unit.id} value={unit.id}>
+                                  {(propertiesMap.get(unit.property_id)?.name as string) || "Property"} - Unit {unit.unit_number}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />

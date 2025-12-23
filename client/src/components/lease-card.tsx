@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { Lease } from "@shared/schema";
-import { getProfileById, getUnitById, getPropertyById } from "@/lib/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 interface LeaseCardProps {
   lease: Lease;
@@ -15,9 +16,47 @@ interface LeaseCardProps {
 }
 
 export function LeaseCard({ lease, showDetails = true, onView, onRenew }: LeaseCardProps) {
-  const tenant = getProfileById(lease.tenantId);
-  const unit = getUnitById(lease.unitId);
-  const property = unit ? getPropertyById(unit.propertyId) : null;
+  const { data: unit } = useQuery({
+    queryKey: ["unit", lease.unitId],
+    enabled: isSupabaseConfigured && !!lease.unitId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("units")
+        .select("id, unit_number, property_id, bedrooms, bathrooms, sqft")
+        .eq("id", lease.unitId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: property } = useQuery({
+    queryKey: ["property", unit?.property_id],
+    enabled: isSupabaseConfigured && !!unit?.property_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("id, name")
+        .eq("id", unit!.property_id)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  const { data: tenant } = useQuery({
+    queryKey: ["profile", lease.tenantId],
+    enabled: isSupabaseConfigured && !!lease.tenantId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .eq("id", lease.tenantId)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
 
   const startDate = new Date(lease.startDate);
   const endDate = new Date(lease.endDate);
@@ -78,7 +117,7 @@ export function LeaseCard({ lease, showDetails = true, onView, onRenew }: LeaseC
                 <Home className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">Unit:</span>
                 <span className="font-medium">
-                  {property.name} - Unit {unit.unitNumber}
+                  {property.name} - Unit {unit.unit_number}
                 </span>
               </div>
             )}
