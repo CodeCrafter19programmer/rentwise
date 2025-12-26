@@ -18,42 +18,61 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const STORAGE_KEY = "rentwise_auth_user";
+
+function saveUserToStorage(user: AuthUser | null) {
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {}
+}
+
+function loadUserFromStorage(): AuthUser | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return JSON.parse(stored) as AuthUser;
+  } catch {}
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => loadUserFromStorage());
   const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const userRef = useRef<AuthUser | null>(null);
+  const userRef = useRef<AuthUser | null>(loadUserFromStorage());
 
   useEffect(() => {
     userRef.current = user;
+    saveUserToStorage(user);
   }, [user]);
-
-  const withTimeout = useCallback(<T,>(promise: PromiseLike<T>, ms: number): Promise<T> => {
-    return Promise.race([
-      Promise.resolve(promise),
-      new Promise<T>((_resolve, reject) => {
-        setTimeout(() => reject(new Error("timeout")), ms);
-      }),
-    ]);
-  }, []);
 
   const buildAuthUser = useCallback(async (existingUser?: AuthUser | null): Promise<AuthUser | null> => {
     if (!isSupabaseConfigured) return null;
-    const { data } = await withTimeout(supabase.auth.getSession(), 8000);
-    const session = data.session;
+    
+    // First try getSession (reads from memory/storage, fast)
+    let session = (await supabase.auth.getSession()).data.session;
+    
+    // If no session in memory, try refreshing (network call)
+    if (!session) {
+      try {
+        const refreshResult = await supabase.auth.refreshSession();
+        session = refreshResult.data.session;
+      } catch {}
+    }
+    
     if (!session?.user) return null;
 
     const authUser = session.user;
     let profileRow: any | null = null;
     try {
-      const { data: pr } = await withTimeout(
-        supabase
-          .from("profiles")
-          .select("id, email, name, role")
-          .eq("id", authUser.id)
-          .single(),
-        8000,
-      );
-      profileRow = pr || null;
+      const { data: pr, error } = await supabase
+        .from("profiles")
+        .select("id, email, name, role")
+        .eq("id", authUser.id)
+        .single();
+      if (!error) profileRow = pr || null;
     } catch {
       profileRow = null;
     }
@@ -78,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name,
       role,
     };
-  }, [withTimeout]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -137,20 +156,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState !== "visible") return;
       const existing = userRef.current;
       if (!existing) return;
-      setAuthLoading(true);
+      // Don't show loading spinner for background refresh
       try {
-        await withTimeout(supabase.auth.refreshSession(), 8000);
+        await supabase.auth.refreshSession();
         const u = await buildAuthUser(existing);
         if (u) {
           setUser(u);
           userRef.current = u;
-        } else {
-          setUser(existing);
         }
+        // If buildAuthUser returns null but we have existing, keep existing (session might have expired but we don't force logout)
       } catch {
-        if (existing) setUser(existing);
-      } finally {
-        setAuthLoading(false);
+        // On error, keep existing user - don't logout on transient failures
       }
     };
 
