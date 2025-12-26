@@ -5,12 +5,66 @@ import { PropertyCard } from "@/components/property-card";
 import { FinancialChart } from "@/components/financial-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "manager" | "tenant">("manager");
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const sendInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviteLoading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Missing session");
+
+      const res = await fetch("/api/admin/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+      });
+
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(text);
+      }
+
+      toast({
+        title: "Invitation sent",
+        description: `${inviteEmail.trim()} was invited as ${inviteRole}.`,
+      });
+      setInviteEmail("");
+    } catch (e) {
+      toast({
+        title: "Failed to invite user",
+        description: getSupabaseErrorMessage(e),
+        variant: "destructive",
+      });
+    } finally {
+      setInviteLoading(false);
+    }
+  };
 
   const { data: properties = [] } = useQuery({
     queryKey: ["properties"],
@@ -196,6 +250,43 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Invite Users
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="sm:col-span-2">
+                <Input
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  type="email"
+                  data-testid="input-invite-email"
+                />
+              </div>
+              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as any)}>
+                <SelectTrigger data-testid="select-invite-role">
+                  <SelectValue placeholder="Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="tenant">Tenant</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={sendInvite} disabled={!inviteEmail.trim() || inviteLoading} data-testid="button-send-invite">
+                {inviteLoading ? "Sending..." : "Send Invite"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">

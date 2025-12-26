@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
 import { storage } from "./storage";
 import { requireAuth, requireRole, AuthenticatedRequest } from "./middleware/auth";
 import { validateBody, validateParams } from "./middleware/validation";
@@ -22,6 +23,11 @@ const messageSchema = z.object({
   receiverId: z.string().uuid(),
   subject: z.string().max(200).optional().transform((val) => val ? sanitizeText(val) : val),
   content: z.string().min(1).max(5000).transform(sanitizeText),
+});
+
+const adminInviteSchema = z.object({
+  email: z.string().email().transform(sanitizeText),
+  role: z.enum(["admin", "manager", "tenant"]),
 });
 
 export async function registerRoutes(
@@ -83,6 +89,61 @@ export async function registerRoutes(
         res.json({ message: "Admin users endpoint", users: [] });
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch users" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/admin/invite",
+    requireAuth,
+    requireRole("admin"),
+    validateBody(adminInviteSchema),
+    async (req: AuthenticatedRequest, res) => {
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+      if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({
+          message: "Server is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+        });
+      }
+
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+      });
+
+      try {
+        const { email, role } = req.body as z.infer<typeof adminInviteSchema>;
+        const redirectTo = process.env.PUBLIC_SITE_URL || process.env.APP_URL;
+
+        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          data: { role },
+          ...(redirectTo ? { redirectTo } : {}),
+        });
+
+        if (error || !data?.user) {
+          return res.status(400).json({ message: error?.message || "Failed to invite user" });
+        }
+
+        const invitedUser = data.user;
+
+        await supabaseAdmin
+          .from("profiles")
+          .upsert({
+            id: invitedUser.id,
+            email,
+            role,
+            name: email.split("@")[0] || "User",
+          });
+
+        return res.json({
+          message: "Invitation sent",
+          userId: invitedUser.id,
+          email,
+          role,
+        });
+      } catch (e: any) {
+        return res.status(500).json({ message: e?.message || "Failed to invite user" });
       }
     }
   );
