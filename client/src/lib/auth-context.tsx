@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return null;
+      if (error) throw error;
       const u = await buildAuthUser();
       setUser(u);
       return u;

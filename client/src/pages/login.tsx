@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
+import { getSupabaseErrorMessage } from "@/lib/supabase-error";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const loginSchema = z.object({
@@ -58,6 +59,12 @@ export default function LoginPage() {
           variant: "destructive",
         });
       }
+    } catch (err) {
+      toast({
+        title: "Login failed",
+        description: getSupabaseErrorMessage(err),
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
