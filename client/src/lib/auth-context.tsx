@@ -79,6 +79,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const existingMatches = existingUser && existingUser.id === authUser.id ? existingUser : null;
 
+    // Priority: profile DB > existing cached > user_metadata > fallback
+    // IMPORTANT: Don't default to "tenant" if we have a cached role - profile fetch might have failed due to RLS
+    const cachedUser = loadUserFromStorage();
+    const cachedRole = cachedUser?.id === authUser.id ? cachedUser.role : null;
+    
     const name =
       profileRow?.name ||
       existingMatches?.name ||
@@ -88,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role =
       (profileRow?.role as AuthUser["role"]) ||
       existingMatches?.role ||
+      cachedRole ||
       (authUser.user_metadata?.role as AuthUser["role"]) ||
       "tenant";
 
