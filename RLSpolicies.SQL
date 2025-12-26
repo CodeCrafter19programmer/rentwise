@@ -20,10 +20,6 @@ create policy "self read profile" on profiles
 for select to authenticated
 using (id = auth.uid());
 
-create policy "mgr/admin read profiles" on profiles
-for select to authenticated
-using (exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('manager','admin')));
-
 -- PROPERTIES
 create policy "manager read properties" on properties
 for select to authenticated

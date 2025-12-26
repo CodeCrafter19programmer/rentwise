@@ -22,19 +22,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
 
+  const withTimeout = useCallback(<T,>(promise: PromiseLike<T>, ms: number): Promise<T> => {
+    return Promise.race([
+      Promise.resolve(promise),
+      new Promise<T>((_resolve, reject) => {
+        setTimeout(() => reject(new Error("timeout")), ms);
+      }),
+    ]);
+  }, []);
+
   const buildAuthUser = useCallback(async (): Promise<AuthUser | null> => {
     if (!isSupabaseConfigured) return null;
-    const { data } = await supabase.auth.getSession();
+    const { data } = await withTimeout(supabase.auth.getSession(), 8000);
     const session = data.session;
     if (!session?.user) return null;
 
     const authUser = session.user;
     // Try to read profile row (optional now; will exist once backend seeds profiles)
-    const { data: profileRow } = await supabase
-      .from("profiles")
-      .select("id, email, name, role")
-      .eq("id", authUser.id)
-      .single();
+    const { data: profileRow } = await withTimeout(
+      supabase
+        .from("profiles")
+        .select("id, email, name, role")
+        .eq("id", authUser.id)
+        .single(),
+      8000,
+    );
 
     const name = profileRow?.name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User";
     const role = (profileRow?.role as AuthUser["role"]) || (authUser.user_metadata?.role as AuthUser["role"]) || "tenant";
@@ -45,25 +57,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name,
       role,
     };
-  }, []);
+  }, [withTimeout]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       setAuthLoading(true);
-      const u = await buildAuthUser();
-      if (mounted) {
-        setUser(u);
-        setAuthLoading(false);
+      try {
+        const u = await buildAuthUser();
+        if (mounted) setUser(u);
+      } catch {
+        if (mounted) setUser(null);
+      } finally {
+        if (mounted) setAuthLoading(false);
       }
     })();
 
     const sub = isSupabaseConfigured
       ? supabase.auth.onAuthStateChange(async () => {
           setAuthLoading(true);
-          const u = await buildAuthUser();
-          setUser(u);
-          setAuthLoading(false);
+          try {
+            const u = await buildAuthUser();
+            setUser(u);
+          } catch {
+            setUser(null);
+          } finally {
+            setAuthLoading(false);
+          }
         })
       : { subscription: { unsubscribe: () => {} } } as any;
 
