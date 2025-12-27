@@ -56,7 +56,12 @@ function ProtectedRoute({
   const { user, isAuthenticated, authLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const hasAccess = !authLoading && isAuthenticated && user && (!allowedRoles || allowedRoles.includes(user.role));
+  // If we have a user with the right role, show the component immediately
+  // Don't wait for authLoading to finish if we already have valid cached user
+  const userHasAccess = user && (!allowedRoles || allowedRoles.includes(user.role));
+  const shouldShowContent = isAuthenticated && userHasAccess;
+  
+  // Only redirect if auth is done loading AND conditions are met
   const shouldRedirectToLogin = !authLoading && !isAuthenticated;
   const shouldRedirectToRoleDashboard = !authLoading && isAuthenticated && user && allowedRoles && !allowedRoles.includes(user.role);
 
@@ -68,11 +73,18 @@ function ProtectedRoute({
     }
   }, [shouldRedirectToLogin, shouldRedirectToRoleDashboard, user, setLocation]);
 
-  if (authLoading || !hasAccess) {
+  // Show content immediately if user has access (even if still loading in background)
+  if (shouldShowContent) {
+    return <Component />;
+  }
+
+  // Only show loading if we're actually loading AND don't have a valid user yet
+  if (authLoading) {
     return <LoadingScreen />;
   }
 
-  return <Component />;
+  // Not loading, no access - will be redirected by useEffect
+  return <LoadingScreen />;
 }
 
 function Router() {

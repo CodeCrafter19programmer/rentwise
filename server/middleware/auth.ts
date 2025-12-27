@@ -1,13 +1,23 @@
 import { Request, Response, NextFunction } from "express";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// Server-side Supabase client for verifying tokens
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// Lazy-initialize Supabase client to avoid startup errors
+let supabase: SupabaseClient | null = null;
 
-// Note: For production, use service role key for server-side operations
-// The anon key should only be used on the client
-const supabase = createClient(supabaseUrl, supabaseServiceKey || process.env.SUPABASE_ANON_KEY || "");
+function getSupabaseClient(): SupabaseClient | null {
+  if (supabase) return supabase;
+  
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn("Supabase not configured - auth middleware will reject all requests");
+    return null;
+  }
+  
+  supabase = createClient(supabaseUrl, supabaseKey);
+  return supabase;
+}
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -27,6 +37,11 @@ export async function requireAuth(
   next: NextFunction
 ) {
   try {
+    const client = getSupabaseClient();
+    if (!client) {
+      return res.status(503).json({ message: "Authentication service unavailable" });
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader?.startsWith("Bearer ")) {
@@ -36,14 +51,14 @@ export async function requireAuth(
     const token = authHeader.substring(7);
     
     // Verify the JWT token with Supabase
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const { data: { user }, error } = await client.auth.getUser(token);
     
     if (error || !user) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
     // Fetch user profile for role information
-    const { data: profile } = await supabase
+    const { data: profile } = await client
       .from("profiles")
       .select("id, email, role")
       .eq("id", user.id)
@@ -90,6 +105,11 @@ export async function optionalAuth(
   next: NextFunction
 ) {
   try {
+    const client = getSupabaseClient();
+    if (!client) {
+      return next();
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader?.startsWith("Bearer ")) {
@@ -97,10 +117,10 @@ export async function optionalAuth(
     }
 
     const token = authHeader.substring(7);
-    const { data: { user } } = await supabase.auth.getUser(token);
+    const { data: { user } } = await client.auth.getUser(token);
     
     if (user) {
-      const { data: profile } = await supabase
+      const { data: profile } = await client
         .from("profiles")
         .select("id, email, role")
         .eq("id", user.id)

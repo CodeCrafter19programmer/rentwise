@@ -39,9 +39,13 @@ function loadUserFromStorage(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => loadUserFromStorage());
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const userRef = useRef<AuthUser | null>(loadUserFromStorage());
+  // Initialize from localStorage - if we have a cached user, start as NOT loading
+  const cachedUser = loadUserFromStorage();
+  const [user, setUser] = useState<AuthUser | null>(cachedUser);
+  // Only show loading if we have NO cached user (fresh visit)
+  const [authLoading, setAuthLoading] = useState<boolean>(!cachedUser);
+  const userRef = useRef<AuthUser | null>(cachedUser);
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
     userRef.current = user;
@@ -107,23 +111,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    
+    // Initial load - only show loading if no cached user
     (async () => {
-      setAuthLoading(true);
+      // If we already have a cached user, don't show loading spinner
+      if (!userRef.current) {
+        setAuthLoading(true);
+      }
       try {
         const existing = userRef.current;
         const u = await buildAuthUser(existing);
         if (!mounted) return;
         if (u) {
           setUser(u);
+          userRef.current = u;
         } else if (existing) {
+          // Keep existing user if buildAuthUser fails (RLS issues, network errors)
           setUser(existing);
         } else {
           setUser(null);
         }
       } catch {
+        // On error, preserve existing user
         if (mounted && userRef.current) setUser(userRef.current);
       } finally {
-        if (mounted) setAuthLoading(false);
+        if (mounted) {
+          setAuthLoading(false);
+          initialLoadDone.current = true;
+        }
       }
     })();
 
@@ -136,7 +151,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          setAuthLoading(true);
+          // IMPORTANT: Don't set authLoading=true for background events after initial load
+          // This prevents the loading spinner from showing when token refreshes
+          // Only show loading for SIGNED_IN event if we don't have a user yet
+          const showLoading = event === "SIGNED_IN" && !userRef.current;
+          if (showLoading) setAuthLoading(true);
+          
           try {
             const existing = userRef.current;
             const u = await buildAuthUser(existing);
@@ -144,15 +164,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(u);
               userRef.current = u;
             } else if (existing) {
+              // Keep existing user on failure
               setUser(existing);
             } else {
               setUser(null);
               userRef.current = null;
             }
           } catch {
+            // On error, keep existing user
             if (userRef.current) setUser(userRef.current);
           } finally {
-            setAuthLoading(false);
+            if (showLoading) setAuthLoading(false);
           }
         })
       : { subscription: { unsubscribe: () => {} } } as any;
@@ -162,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState !== "visible") return;
       const existing = userRef.current;
       if (!existing) return;
-      // Don't show loading spinner for background refresh
+      // Don't show loading spinner for background refresh - silent update
       try {
         await supabase.auth.refreshSession();
         const u = await buildAuthUser(existing);
@@ -170,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(u);
           userRef.current = u;
         }
-        // If buildAuthUser returns null but we have existing, keep existing (session might have expired but we don't force logout)
+        // If buildAuthUser returns null but we have existing, keep existing
       } catch {
         // On error, keep existing user - don't logout on transient failures
       }
