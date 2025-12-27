@@ -71,24 +71,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authUser = session.user;
     let profileRow: any | null = null;
     
-    // Fetch profile with timeout to prevent hanging on RLS issues
+    // Fetch profile - don't let it block login
     try {
-      const profilePromise = supabase
+      const { data: pr, error } = await supabase
         .from("profiles")
         .select("id, email, name, role")
         .eq("id", authUser.id)
         .single();
-      
-      // Race with a 3-second timeout
-      const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => 
-        setTimeout(() => reject(new Error("Profile fetch timeout")), 3000)
-      );
-      
-      const { data: pr, error } = await Promise.race([profilePromise, timeoutPromise]);
-      if (!error) profileRow = pr || null;
-    } catch (e) {
-      console.warn("Profile fetch failed:", e);
-      profileRow = null;
+      if (!error && pr) profileRow = pr;
+    } catch {
+      // Profile fetch failed - continue with fallback role
     }
 
     const existingMatches = existingUser && existingUser.id === authUser.id ? existingUser : null;
