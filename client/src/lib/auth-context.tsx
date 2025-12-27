@@ -71,13 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authUser = session.user;
     let profileRow: any | null = null;
     
-    // Fetch profile - don't let it block login
+    // Fetch profile - use maybeSingle() to handle RLS edge cases safely
     try {
       const { data: pr, error } = await supabase
         .from("profiles")
         .select("id, email, name, role")
         .eq("id", authUser.id)
-        .single();
+        .maybeSingle();
       if (!error && pr) profileRow = pr;
     } catch {
       // Profile fetch failed - continue with fallback role

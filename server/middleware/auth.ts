@@ -57,12 +57,12 @@ export async function requireAuth(
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    // Fetch user profile for role information
+    // Fetch user profile for role information - use maybeSingle for RLS safety
     const { data: profile } = await client
       .from("profiles")
       .select("id, email, role")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     req.user = {
       id: user.id,
@@ -124,7 +124,7 @@ export async function optionalAuth(
         .from("profiles")
         .select("id, email, role")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       req.user = {
         id: user.id,
