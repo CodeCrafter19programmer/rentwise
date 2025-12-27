@@ -153,11 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // IMPORTANT: Don't set authLoading=true for background events after initial load
-          // This prevents the loading spinner from showing when token refreshes
-          // Only show loading for SIGNED_IN event if we don't have a user yet
-          const showLoading = event === "SIGNED_IN" && !userRef.current;
-          if (showLoading) setAuthLoading(true);
+          // For SIGNED_IN events, always ensure authLoading is cleared at the end
+          const isSignIn = event === "SIGNED_IN";
           
           try {
             const existing = userRef.current;
@@ -176,7 +173,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // On error, keep existing user
             if (userRef.current) setUser(userRef.current);
           } finally {
-            if (showLoading) setAuthLoading(false);
+            // Always clear loading state for sign-in events
+            if (isSignIn) setAuthLoading(false);
           }
         })
       : { subscription: { unsubscribe: () => {} } } as any;
@@ -214,22 +212,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
+      
       // Clear any stale cached data before login
       localStorage.removeItem(STORAGE_KEY);
       userRef.current = null;
       
+      // ONLY call signInWithPassword - let onAuthStateChange handle user building
+      // This prevents double execution and race conditions
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       
-      // Fetch fresh user data - don't use cached user to avoid role mismatch
-      const u = await buildAuthUser(null);
-      if (u) {
-        setUser(u);
-        userRef.current = u;
-      }
-      return u;
+      // Wait for onAuthStateChange to populate the user
+      // Poll for user state (onAuthStateChange will set it)
+      return new Promise((resolve) => {
+        const checkUser = () => {
+          if (userRef.current) {
+            resolve(userRef.current);
+          } else {
+            setTimeout(checkUser, 100);
+          }
+        };
+        // Start checking after a small delay to let onAuthStateChange fire
+        setTimeout(checkUser, 100);
+        // Timeout after 5 seconds to prevent infinite wait
+        setTimeout(() => resolve(userRef.current), 5000);
+      });
     },
-    [buildAuthUser],
+    [],
   );
 
   const logout = useCallback(async () => {
