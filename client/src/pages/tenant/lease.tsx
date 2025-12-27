@@ -46,9 +46,9 @@ export default function TenantLease() {
         .from("units")
         .select("id, unit_number, bedrooms, bathrooms, sqft, property_id")
         .eq("id", lease!.unitId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 
@@ -60,17 +60,17 @@ export default function TenantLease() {
         .from("properties")
         .select("id, name, address, city, state, zip_code, manager_id")
         .eq("id", unit!.property_id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      const p = data as any;
+      if (!data) return null;
       return {
-        id: p.id,
-        name: p.name,
-        address: p.address,
-        city: p.city,
-        state: p.state,
-        zipCode: p.zip_code,
-        managerId: p.manager_id,
+        id: data.id,
+        name: data.name,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zip_code,
+        managerId: data.manager_id,
       };
     },
   });
@@ -83,9 +83,9 @@ export default function TenantLease() {
         .from("profiles")
         .select("id, name, email, phone")
         .eq("id", property!.managerId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 

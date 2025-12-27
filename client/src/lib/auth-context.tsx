@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
+type UserRole = "admin" | "manager" | "tenant";
+
 type AuthUser = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "manager" | "tenant";
+  role: UserRole;
 };
 
 interface AuthContextType {
@@ -19,240 +21,229 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = "rentwise_auth_user";
+const DEFAULT_ROLE: UserRole = "tenant";
+const LOGIN_TIMEOUT_MS = 8000;
 
-function saveUserToStorage(user: AuthUser | null) {
+function saveUserToStorage(user: AuthUser | null): void {
   try {
     if (user) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     } else {
       localStorage.removeItem(STORAGE_KEY);
     }
-  } catch {}
+  } catch {
+    // Storage unavailable
+  }
 }
 
 function loadUserFromStorage(): AuthUser | null {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored) as AuthUser;
-  } catch {}
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed?.id && parsed?.email && parsed?.role) {
+        return parsed as AuthUser;
+      }
+    }
+  } catch {
+    // Invalid or unavailable storage
+  }
   return null;
 }
 
+function isValidRole(role: unknown): role is UserRole {
+  return role === "admin" || role === "manager" || role === "tenant";
+}
+
+async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("name, role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      name: data.name || undefined,
+      role: isValidRole(data.role) ? data.role : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Initialize from localStorage - if we have a cached user, start as NOT loading
   const cachedUser = loadUserFromStorage();
   const [user, setUser] = useState<AuthUser | null>(cachedUser);
-  // Only show loading if we have NO cached user (fresh visit)
   const [authLoading, setAuthLoading] = useState<boolean>(!cachedUser);
+  
   const userRef = useRef<AuthUser | null>(cachedUser);
-  const initialLoadDone = useRef(false);
+  const bootstrapComplete = useRef(false);
+  const isMounted = useRef(true);
 
-  useEffect(() => {
-    userRef.current = user;
-    saveUserToStorage(user);
-  }, [user]);
+  const updateUser = useCallback((newUser: AuthUser | null) => {
+    userRef.current = newUser;
+    setUser(newUser);
+    saveUserToStorage(newUser);
+  }, []);
 
-  const buildAuthUser = useCallback(async (existingUser?: AuthUser | null): Promise<AuthUser | null> => {
+  const resolveAuthUser = useCallback(async (): Promise<AuthUser | null> => {
     if (!isSupabaseConfigured) return null;
-    
-    // First try getSession (reads from memory/storage, fast)
-    let session = (await supabase.auth.getSession()).data.session;
-    
-    // If no session in memory, try refreshing (network call)
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    let session = sessionData?.session;
+
     if (!session) {
       try {
-        const refreshResult = await supabase.auth.refreshSession();
-        session = refreshResult.data.session;
-      } catch {}
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        session = refreshData?.session;
+      } catch {
+        // Refresh failed
+      }
     }
-    
+
     if (!session?.user) return null;
 
     const authUser = session.user;
-    let profileRow: any | null = null;
-    
-    // Fetch profile - use maybeSingle() to handle RLS edge cases safely
-    try {
-      const { data: pr, error } = await supabase
-        .from("profiles")
-        .select("id, email, name, role")
-        .eq("id", authUser.id)
-        .maybeSingle();
-      if (!error && pr) profileRow = pr;
-    } catch {
-      // Profile fetch failed - continue with fallback role
-    }
+    const userId = authUser.id;
+    const email = authUser.email || "";
 
-    const existingMatches = existingUser && existingUser.id === authUser.id ? existingUser : null;
+    const profile = await fetchProfileSafe(userId);
+    const cached = loadUserFromStorage();
+    const cachedMatchesUser = cached?.id === userId;
 
-    // Priority: profile DB > existing cached > user_metadata > fallback
-    // IMPORTANT: Don't default to "tenant" if we have a cached role - profile fetch might have failed due to RLS
-    const cachedUser = loadUserFromStorage();
-    const cachedRole = cachedUser?.id === authUser.id ? cachedUser.role : null;
-    
     const name =
-      profileRow?.name ||
-      existingMatches?.name ||
+      profile?.name ||
+      (cachedMatchesUser ? cached.name : null) ||
       authUser.user_metadata?.name ||
-      authUser.email?.split("@")[0] ||
+      email.split("@")[0] ||
       "User";
-    const role =
-      (profileRow?.role as AuthUser["role"]) ||
-      existingMatches?.role ||
-      cachedRole ||
-      (authUser.user_metadata?.role as AuthUser["role"]) ||
-      "tenant";
 
-    return {
-      id: authUser.id,
-      email: authUser.email || "",
-      name,
-      role,
-    };
+    const role: UserRole =
+      profile?.role ||
+      (cachedMatchesUser && isValidRole(cached.role) ? cached.role : null) ||
+      (isValidRole(authUser.user_metadata?.role) ? authUser.user_metadata.role : null) ||
+      DEFAULT_ROLE;
+
+    return { id: userId, email, name, role };
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    
-    // Initial load - only show loading if no cached user
-    (async () => {
-      // If we already have a cached user, don't show loading spinner
+    isMounted.current = true;
+
+    const bootstrap = async () => {
+      if (bootstrapComplete.current) return;
+
       if (!userRef.current) {
         setAuthLoading(true);
       }
+
       try {
-        const existing = userRef.current;
-        const u = await buildAuthUser(existing);
-        if (!mounted) return;
-        if (u) {
-          setUser(u);
-          userRef.current = u;
-        } else if (existing) {
-          // Keep existing user if buildAuthUser fails (RLS issues, network errors)
-          setUser(existing);
-        } else {
-          setUser(null);
+        const resolved = await resolveAuthUser();
+        if (!isMounted.current) return;
+
+        if (resolved) {
+          updateUser(resolved);
+        } else if (!userRef.current) {
+          updateUser(null);
         }
       } catch {
-        // On error, preserve existing user
-        if (mounted && userRef.current) setUser(userRef.current);
+        if (isMounted.current && !userRef.current) {
+          updateUser(null);
+        }
       } finally {
-        if (mounted) {
+        if (isMounted.current) {
           setAuthLoading(false);
-          initialLoadDone.current = true;
+          bootstrapComplete.current = true;
         }
       }
-    })();
+    };
 
-    const sub = isSupabaseConfigured
+    bootstrap();
+
+    const authSubscription = isSupabaseConfigured
       ? supabase.auth.onAuthStateChange(async (event) => {
+          if (!isMounted.current) return;
+
           if (event === "SIGNED_OUT") {
-            userRef.current = null;
-            setUser(null);
+            updateUser(null);
             setAuthLoading(false);
             return;
           }
 
-          // For SIGNED_IN events, always ensure authLoading is cleared at the end
-          const isSignIn = event === "SIGNED_IN";
-          
-          try {
-            const existing = userRef.current;
-            const u = await buildAuthUser(existing);
-            if (u) {
-              setUser(u);
-              userRef.current = u;
-            } else if (existing) {
-              // Keep existing user on failure
-              setUser(existing);
-            } else {
-              setUser(null);
-              userRef.current = null;
+          if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+            try {
+              const resolved = await resolveAuthUser();
+              if (isMounted.current) {
+                if (resolved) {
+                  updateUser(resolved);
+                }
+              }
+            } catch {
+              // Keep existing user on error
+            } finally {
+              if (isMounted.current) {
+                setAuthLoading(false);
+              }
             }
-          } catch {
-            // On error, keep existing user
-            if (userRef.current) setUser(userRef.current);
-          } finally {
-            // Always clear loading state for sign-in events
-            if (isSignIn) setAuthLoading(false);
           }
         })
-      : { subscription: { unsubscribe: () => {} } } as any;
-
-    const onVisible = async () => {
-      if (!isSupabaseConfigured) return;
-      if (document.visibilityState !== "visible") return;
-      const existing = userRef.current;
-      if (!existing) return;
-      // Don't show loading spinner for background refresh - silent update
-      try {
-        await supabase.auth.refreshSession();
-        const u = await buildAuthUser(existing);
-        if (u) {
-          setUser(u);
-          userRef.current = u;
-        }
-        // If buildAuthUser returns null but we have existing, keep existing
-      } catch {
-        // On error, keep existing user - don't logout on transient failures
-      }
-    };
-
-    window.addEventListener("focus", onVisible);
-    document.addEventListener("visibilitychange", onVisible);
+      : null;
 
     return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onVisible);
+      isMounted.current = false;
+      authSubscription?.data.subscription.unsubscribe();
     };
-  }, [buildAuthUser]);
+  }, [resolveAuthUser, updateUser]);
 
   const login = useCallback(
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
-      
-      // Clear any stale cached data before login
+
       localStorage.removeItem(STORAGE_KEY);
       userRef.current = null;
-      
-      // ONLY call signInWithPassword - let onAuthStateChange handle user building
-      // This prevents double execution and race conditions
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      
-      // Wait for onAuthStateChange to populate the user
-      // Poll for user state (onAuthStateChange will set it)
-      return new Promise((resolve) => {
-        const checkUser = () => {
-          if (userRef.current) {
-            resolve(userRef.current);
-          } else {
-            setTimeout(checkUser, 100);
-          }
-        };
-        // Start checking after a small delay to let onAuthStateChange fire
-        setTimeout(checkUser, 100);
-        // Timeout after 5 seconds to prevent infinite wait
-        setTimeout(() => resolve(userRef.current), 5000);
-      });
+      if (!data.user) throw new Error("Login failed: no user returned");
+
+      const userId = data.user.id;
+      const userEmail = data.user.email || email;
+
+      const profile = await fetchProfileSafe(userId);
+
+      const name =
+        profile?.name ||
+        data.user.user_metadata?.name ||
+        userEmail.split("@")[0] ||
+        "User";
+
+      const role: UserRole =
+        profile?.role ||
+        (isValidRole(data.user.user_metadata?.role) ? data.user.user_metadata.role : null) ||
+        DEFAULT_ROLE;
+
+      const authUser: AuthUser = { id: userId, email: userEmail, name, role };
+      updateUser(authUser);
+      setAuthLoading(false);
+
+      return authUser;
     },
-    [],
+    [updateUser],
   );
 
   const logout = useCallback(async () => {
-    // Clear localStorage first
     localStorage.removeItem(STORAGE_KEY);
     userRef.current = null;
     setUser(null);
-    
-    // Then sign out from Supabase
+    setAuthLoading(false);
+
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
-      } catch (e) {
-        console.error("Logout error:", e);
+      } catch {
+        // Ignore signout errors
       }
     }
   }, []);

@@ -24,9 +24,9 @@ export function LeaseCard({ lease, showDetails = true, onView, onRenew }: LeaseC
         .from("units")
         .select("id, unit_number, property_id, bedrooms, bathrooms, sqft")
         .eq("id", lease.unitId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 
@@ -38,9 +38,9 @@ export function LeaseCard({ lease, showDetails = true, onView, onRenew }: LeaseC
         .from("properties")
         .select("id, name")
         .eq("id", unit!.property_id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 
@@ -52,9 +52,9 @@ export function LeaseCard({ lease, showDetails = true, onView, onRenew }: LeaseC
         .from("profiles")
         .select("id, name")
         .eq("id", lease.tenantId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 

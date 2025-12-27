@@ -82,9 +82,9 @@ export default function TenantMaintenance() {
         .from("units")
         .select("id, unit_number")
         .eq("id", lease!.unitId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 

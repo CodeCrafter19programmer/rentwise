@@ -48,9 +48,9 @@ export default function TenantDashboard() {
         .from("units")
         .select("id, unit_number, property_id")
         .eq("id", lease!.unitId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 
@@ -62,9 +62,9 @@ export default function TenantDashboard() {
         .from("properties")
         .select("id, name")
         .eq("id", unit!.property_id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 

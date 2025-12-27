@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -54,37 +53,20 @@ function ProtectedRoute({
   allowedRoles?: string[];
 }) {
   const { user, isAuthenticated, authLoading } = useAuth();
-  const [, setLocation] = useLocation();
 
-  // If we have a user with the right role, show the component immediately
-  // Don't wait for authLoading to finish if we already have valid cached user
-  const userHasAccess = user && (!allowedRoles || allowedRoles.includes(user.role));
-  const shouldShowContent = isAuthenticated && userHasAccess;
-  
-  // Only redirect if auth is done loading AND conditions are met
-  const shouldRedirectToLogin = !authLoading && !isAuthenticated;
-  const shouldRedirectToRoleDashboard = !authLoading && isAuthenticated && user && allowedRoles && !allowedRoles.includes(user.role);
-
-  useEffect(() => {
-    if (shouldRedirectToLogin) {
-      setLocation("/login");
-    } else if (shouldRedirectToRoleDashboard && user) {
-      setLocation(`/${user.role}`);
-    }
-  }, [shouldRedirectToLogin, shouldRedirectToRoleDashboard, user, setLocation]);
-
-  // Show content immediately if user has access (even if still loading in background)
-  if (shouldShowContent) {
-    return <Component />;
-  }
-
-  // Only show loading if we're actually loading AND don't have a valid user yet
-  if (authLoading) {
+  if (authLoading && !user) {
     return <LoadingScreen />;
   }
 
-  // Not loading, no access - will be redirected by useEffect
-  return <LoadingScreen />;
+  if (!isAuthenticated || !user) {
+    return <Redirect to="/login" />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Redirect to={`/${user.role}`} />;
+  }
+
+  return <Component />;
 }
 
 function Router() {

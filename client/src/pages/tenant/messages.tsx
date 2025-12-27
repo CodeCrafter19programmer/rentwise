@@ -57,9 +57,9 @@ export default function TenantMessages() {
         .from("units")
         .select("id, property_id")
         .eq("id", lease!.unitId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 
@@ -71,10 +71,10 @@ export default function TenantMessages() {
         .from("properties")
         .select("id, name, manager_id")
         .eq("id", unit!.property_id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      const p = data as any;
-      return { id: p.id, name: p.name, managerId: p.manager_id } as any;
+      if (!data) return null;
+      return { id: data.id, name: data.name, managerId: data.manager_id };
     },
   });
 
@@ -86,9 +86,9 @@ export default function TenantMessages() {
         .from("profiles")
         .select("id, name, email, role")
         .eq("id", property!.managerId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      return data as any;
+      return data;
     },
   });
 

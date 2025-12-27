@@ -37,7 +37,7 @@ export function PropertyCard({ property, onView, onEdit }: PropertyCardProps) {
         .from("profiles")
         .select("id, name")
         .eq("id", property.managerId as string)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
