@@ -212,20 +212,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
+      // Clear any stale cached data before login
+      localStorage.removeItem(STORAGE_KEY);
+      userRef.current = null;
+      
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      const u = await buildAuthUser(userRef.current);
-      setUser(u);
+      
+      // Fetch fresh user data - don't use cached user to avoid role mismatch
+      const u = await buildAuthUser(null);
+      if (u) {
+        setUser(u);
+        userRef.current = u;
+      }
       return u;
     },
     [buildAuthUser],
   );
 
   const logout = useCallback(async () => {
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
-    }
+    // Clear localStorage first
+    localStorage.removeItem(STORAGE_KEY);
+    userRef.current = null;
     setUser(null);
+    
+    // Then sign out from Supabase
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.error("Logout error:", e);
+      }
+    }
   }, []);
 
   return (

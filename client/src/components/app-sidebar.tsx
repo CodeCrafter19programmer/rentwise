@@ -91,8 +91,13 @@ const getRoleLabel = (role: UserRole): string => {
 };
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    setLocation("/login");
+  };
 
   if (!user) return null;
 
@@ -169,7 +174,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={logout}
+              onClick={handleLogout}
               className="text-destructive"
               data-testid="button-logout"
             >
