@@ -162,7 +162,6 @@ export default function RegisterPage() {
                     </Button>
                   </form>
                 </Form>
-              )}
             </CardContent>
           </Card>
 
