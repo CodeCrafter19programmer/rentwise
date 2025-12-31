@@ -100,34 +100,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveUserToStorage(newUser);
   }, []);
 
-  const resolveAuthUser = useCallback(async (): Promise<AuthUser | null> => {
+  const resolveAuthUser = useCallback(async (providedSession?: any): Promise<AuthUser | null> => {
     if (!isSupabaseConfigured) return null;
 
-    console.log('[AUTH] resolveAuthUser: Getting session...');
-    const sessionTimeout = new Promise<null>((resolve) => setTimeout(() => {
-      console.log('[AUTH] getSession timeout');
-      resolve(null);
-    }, 5000));
-
-    const sessionResult = await Promise.race([
-      supabase.auth.getSession(),
-      sessionTimeout
-    ]);
-
-    if (!sessionResult) {
-      console.log('[AUTH] Session fetch timed out');
-      return null;
-    }
-
-    let session = sessionResult.data?.session;
+    let session = providedSession;
 
     if (!session) {
-      try {
-        const { data: refreshData } = await supabase.auth.refreshSession();
-        session = refreshData?.session;
-      } catch {
-        // Refresh failed
+      console.log('[AUTH] resolveAuthUser: Getting session...');
+      const sessionTimeout = new Promise<null>((resolve) => setTimeout(() => {
+        console.log('[AUTH] getSession timeout');
+        resolve(null);
+      }, 5000));
+
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        sessionTimeout
+      ]);
+
+      if (!sessionResult) {
+        console.log('[AUTH] Session fetch timed out');
+        return null;
       }
+
+      session = sessionResult.data?.session;
+
+      if (!session) {
+        try {
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          session = refreshData?.session;
+        } catch {
+          // Refresh failed
+        }
+      }
+    } else {
+      console.log('[AUTH] Using provided session');
     }
 
     if (!session?.user) {
@@ -141,21 +147,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('[AUTH] Fetching profile for userId:', userId);
     const profile = await fetchProfileSafe(userId);
-    console.log('[AUTH] Profile fetched:', !!profile);
+    console.log('[AUTH] Profile fetched:', !!profile, 'Role:', profile?.role);
     
     const cached = loadUserFromStorage();
     const cachedMatchesUser = cached?.id === userId;
 
     const name =
       profile?.name ||
-      (cachedMatchesUser ? cached.name : null) ||
+      (cachedMatchesUser && cached ? cached.name : null) ||
       authUser.user_metadata?.name ||
       email.split("@")[0] ||
       "User";
 
     const role: UserRole =
       profile?.role ||
-      (cachedMatchesUser && isValidRole(cached.role) ? cached.role : null) ||
+      (cachedMatchesUser && cached && isValidRole(cached.role) ? cached.role : null) ||
       (isValidRole(authUser.user_metadata?.role) ? authUser.user_metadata.role : null) ||
       DEFAULT_ROLE;
 
@@ -205,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
             console.log('[AUTH] Starting user resolution for', event);
             try {
-              const resolved = await resolveAuthUser();
+              const resolved = await resolveAuthUser(session);
               console.log('[AUTH] Resolved user:', !!resolved);
               if (isMounted.current) {
                 if (resolved) {
