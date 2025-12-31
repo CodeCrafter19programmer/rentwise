@@ -87,17 +87,24 @@ export default function AdminManagers() {
     mutationFn: async (data: ManagerFormData) => {
       try {
         console.log('[MANAGER] Getting session token...');
-        const { data: sessionData } = await supabase.auth.getSession();
+        
+        // Race getSession with a timeout
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Session timeout')), 5000)
+        );
+        
+        const { data: sessionData } = await Promise.race([sessionPromise, timeoutPromise]) as any;
         const token = sessionData?.session?.access_token;
 
         if (!token) {
-          throw new Error("Not authenticated");
+          throw new Error("Not authenticated - please refresh and try again");
         }
 
-        console.log('[MANAGER] Calling API to create manager...');
+        console.log('[MANAGER] Token retrieved, calling API...');
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         const response = await fetch("/api/admin/managers", {
           method: "POST",
