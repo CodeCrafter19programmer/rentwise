@@ -155,24 +155,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userId = authUser.id;
     const email = authUser.email || "";
 
-    console.log('[AUTH] Fetching profile for userId:', userId);
-    const profile = await fetchProfileSafe(userId);
-    console.log('[AUTH] Profile fetched:', !!profile, 'Role:', profile?.role);
-    
     const cached = loadUserFromStorage();
     const cachedMatchesUser = cached?.id === userId;
 
+    console.log('[AUTH] Checking metadata role:', authUser.user_metadata?.role);
+    console.log('[AUTH] Checking cached role:', cached?.role);
+
+    let profile: { name?: string; role?: UserRole } | null = null;
+    
+    if (!authUser.user_metadata?.role && !cached?.role) {
+      console.log('[AUTH] No metadata/cached role found, fetching profile...');
+      profile = await fetchProfileSafe(userId);
+      console.log('[AUTH] Profile fetched:', !!profile, 'Role:', profile?.role);
+    } else {
+      console.log('[AUTH] Skipping profile fetch - using metadata/cache');
+    }
+
     const name =
-      profile?.name ||
-      (cachedMatchesUser && cached ? cached.name : null) ||
       authUser.user_metadata?.name ||
+      (cachedMatchesUser && cached ? cached.name : null) ||
+      profile?.name ||
       email.split("@")[0] ||
       "User";
 
     const role: UserRole =
-      profile?.role ||
-      (cachedMatchesUser && cached && isValidRole(cached.role) ? cached.role : null) ||
       (isValidRole(authUser.user_metadata?.role) ? authUser.user_metadata.role : null) ||
+      (cachedMatchesUser && cached && isValidRole(cached.role) ? cached.role : null) ||
+      profile?.role ||
       DEFAULT_ROLE;
 
     console.log('[AUTH] Resolved user - role:', role);
