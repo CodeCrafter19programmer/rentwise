@@ -160,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authSubscription = isSupabaseConfigured
       ? supabase.auth.onAuthStateChange(async (event, session) => {
           if (!isMounted.current) return;
+          console.log('[AUTH] Event:', event, 'Session:', !!session, 'User:', !!session?.user);
 
           if (event === "SIGNED_OUT") {
             updateUser(null);
@@ -168,12 +169,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+            console.log('[AUTH] Starting user resolution for', event);
             try {
               const resolved = await resolveAuthUser();
+              console.log('[AUTH] Resolved user:', !!resolved);
               if (isMounted.current) {
                 if (resolved) {
+                  console.log('[AUTH] Updating with resolved user');
                   updateUser(resolved);
                 } else if (session?.user && event === "SIGNED_IN") {
+                  console.log('[AUTH] Using fallback user (resolved was null)');
                   const fallbackUser: AuthUser = {
                     id: session.user.id,
                     email: session.user.email || "",
@@ -183,8 +188,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   updateUser(fallbackUser);
                 }
               }
-            } catch {
+            } catch (err) {
+              console.error('[AUTH] Error resolving user:', err);
               if (isMounted.current && session?.user && event === "SIGNED_IN") {
+                console.log('[AUTH] Using fallback user (error caught)');
                 const fallbackUser: AuthUser = {
                   id: session.user.id,
                   email: session.user.email || "",
@@ -212,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
 
+      console.log('[AUTH] Login started');
       localStorage.removeItem(STORAGE_KEY);
       userRef.current = null;
       setUser(null);
@@ -219,14 +227,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (!data.user) throw new Error("Login failed: no user returned");
+      console.log('[AUTH] signInWithPassword succeeded, waiting for state update...');
 
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
+          console.log('[AUTH] Login timeout - resolving with:', userRef.current);
           resolve(userRef.current);
         }, 5000);
 
         const checkInterval = setInterval(() => {
           if (userRef.current) {
+            console.log('[AUTH] User state updated, resolving');
             clearTimeout(timeout);
             clearInterval(checkInterval);
             resolve(userRef.current);
