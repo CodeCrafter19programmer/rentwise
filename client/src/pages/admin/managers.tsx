@@ -85,32 +85,61 @@ export default function AdminManagers() {
 
   const createManagerMutation = useMutation({
     mutationFn: async (data: ManagerFormData) => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
+      try {
+        console.log('[MANAGER] Getting session token...');
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
 
-      if (!token) {
-        throw new Error("Not authenticated");
+        if (!token) {
+          throw new Error("Not authenticated");
+        }
+
+        console.log('[MANAGER] Calling API to create manager...');
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+        const response = await fetch("/api/admin/managers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: data.name,
+            email: data.email,
+            phone: data.phone,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        console.log('[MANAGER] API response status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[MANAGER] API error response:', errorText);
+          let errorMessage = "Failed to create manager";
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch {
+            errorMessage = errorText || errorMessage;
+          }
+          throw new Error(errorMessage);
+        }
+
+        const result = await response.json();
+        console.log('[MANAGER] Manager created successfully:', result);
+        return result;
+      } catch (error: any) {
+        console.error('[MANAGER] Error creating manager:', error);
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out. Please try again.');
+        }
+        throw error;
       }
-
-      const response = await fetch("/api/admin/managers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to create manager");
-      }
-
-      return await response.json();
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["profiles", "managers"] });
