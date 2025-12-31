@@ -58,29 +58,22 @@ function isValidRole(role: unknown): role is UserRole {
 async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
   if (!isSupabaseConfigured) return null;
   
-  const timeout = new Promise<null>((resolve) => setTimeout(() => {
-    console.log('[AUTH] fetchProfileSafe timeout');
-    resolve(null);
-  }, 3000));
-
   try {
-    const profilePromise = supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("name, role")
       .eq("id", userId)
       .maybeSingle();
     
-    const result = await Promise.race([profilePromise, timeout]);
+    console.log('[AUTH] fetchProfileSafe result - data:', !!data, 'error:', !!error, 'role:', data?.role);
     
-    if (!result || result === null) return null;
-    
-    const { data, error } = result;
     if (error || !data) return null;
     return {
       name: data.name || undefined,
       role: isValidRole(data.role) ? data.role : undefined,
     };
-  } catch {
+  } catch (err) {
+    console.error('[AUTH] fetchProfileSafe error:', err);
     return null;
   }
 }
@@ -107,22 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!session) {
       console.log('[AUTH] resolveAuthUser: Getting session...');
-      const sessionTimeout = new Promise<null>((resolve) => setTimeout(() => {
-        console.log('[AUTH] getSession timeout');
-        resolve(null);
-      }, 5000));
-
-      const sessionResult = await Promise.race([
-        supabase.auth.getSession(),
-        sessionTimeout
-      ]);
-
-      if (!sessionResult) {
-        console.log('[AUTH] Session fetch timed out');
-        return null;
-      }
-
-      session = sessionResult.data?.session;
+      const { data: sessionData } = await supabase.auth.getSession();
+      session = sessionData?.session;
 
       if (!session) {
         try {
