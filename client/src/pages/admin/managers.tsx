@@ -86,30 +86,56 @@ export default function AdminManagers() {
   const createManagerMutation = useMutation({
     mutationFn: async (data: ManagerFormData) => {
       try {
-        console.log('[MANAGER] Getting session token from localStorage...');
+        console.log('[MANAGER] Getting auth token...');
         
-        // Get token directly from localStorage where Supabase stores it
-        const supabaseAuthKey = `sb-${import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`;
-        const storedSession = localStorage.getItem(supabaseAuthKey);
-        
+        // Try all possible localStorage keys that Supabase uses
         let token: string | undefined;
-        if (storedSession) {
+        const possibleKeys = Object.keys(localStorage).filter(key => 
+          key.includes('supabase') || key.includes('sb-')
+        );
+        
+        console.log('[MANAGER] Found localStorage keys:', possibleKeys);
+        
+        for (const key of possibleKeys) {
           try {
-            const parsed = JSON.parse(storedSession);
-            token = parsed?.access_token || parsed?.currentSession?.access_token;
+            const value = localStorage.getItem(key);
+            if (value) {
+              const parsed = JSON.parse(value);
+              // Try different possible structures
+              token = parsed?.access_token || 
+                     parsed?.currentSession?.access_token ||
+                     parsed?.session?.access_token;
+              if (token) {
+                console.log('[MANAGER] Found token in key:', key);
+                break;
+              }
+            }
           } catch (e) {
-            console.error('[MANAGER] Failed to parse stored session:', e);
+            // Skip invalid JSON
           }
         }
 
         if (!token) {
-          console.log('[MANAGER] No token in localStorage, trying getSession...');
-          const { data: sessionData } = await supabase.auth.getSession();
-          token = sessionData?.session?.access_token;
+          console.log('[MANAGER] No token in localStorage, getting fresh session...');
+          // Get fresh session with timeout protection
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Session fetch timeout')), 3000)
+          );
+          
+          const sessionPromise = supabase.auth.getSession();
+          
+          try {
+            const { data: sessionData } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+            token = sessionData?.session?.access_token;
+            console.log('[MANAGER] Got token from getSession');
+          } catch (timeoutError) {
+            console.error('[MANAGER] getSession timed out');
+            throw new Error("Session timeout - please refresh the page and try again");
+          }
         }
 
         if (!token) {
-          throw new Error("Not authenticated - please refresh and try again");
+          throw new Error("Not authenticated - please log out and log back in");
         }
 
         console.log('[MANAGER] Token retrieved, calling API...');
