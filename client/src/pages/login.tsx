@@ -88,8 +88,8 @@ export default function LoginPage() {
             <CardHeader className="space-y-1 text-center">
               <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
               <CardDescription>
-                Sign in to access your rental management dashboard. New users must use an
-                invitation link from an owner or managerthere is no public signup.
+                Sign in to access your rental management dashboard. New users must be created
+                by an administrator.
               </CardDescription>
             </CardHeader>
             <CardContent>

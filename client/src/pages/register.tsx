@@ -42,12 +42,6 @@ export default function RegisterPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  const [inviteToken] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get("token");
-  });
-
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -58,32 +52,19 @@ export default function RegisterPage() {
   });
 
   const onSubmit = async (data: RegisterFormData) => {
-    if (!inviteToken) {
-      toast({
-        title: "Invalid invitation",
-        description: "Your invitation link is missing or has expired. Please contact your property manager.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      // Backend registration will be wired later. For now, we just show a success message
-      // and send the user back to the login page.
       toast({
-        title: "Account created",
-        description:
-          "Your invite has been accepted. You can now log in using the credentials provided by your property owner or manager.",
+        title: "Registration disabled",
+        description: "New accounts must be created by an administrator. Please contact your property manager.",
+        variant: "destructive",
       });
       setLocation("/login");
     } finally {
       setIsLoading(false);
     }
   };
-
-  const inviteInvalid = !inviteToken;
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -101,20 +82,17 @@ export default function RegisterPage() {
         <div className="w-full max-w-md space-y-6">
           <Card>
             <CardHeader className="space-y-1 text-center">
-              <CardTitle className="text-2xl font-bold">Complete Your Registration</CardTitle>
+              <CardTitle className="text-2xl font-bold">Registration Disabled</CardTitle>
               <CardDescription>
-                This page is only accessible from an invitation link. Your role and unit are
-                assigned by your property owner or manager.
+                All accounts must be created by an administrator. Please contact your property
+                manager or admin to create an account for you.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {inviteInvalid ? (
-                <p className="text-sm text-destructive">
-                  This registration link is invalid. Ask your property manager or admin to send you a new
-                  invitation.
-                </p>
-              ) : (
-                <Form {...form}>
+              <p className="text-sm text-muted-foreground mb-4">
+                If you already have an account, please use the login page to access your dashboard.
+              </p>
+              <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <FormField
                       control={form.control}
