@@ -57,12 +57,24 @@ function isValidRole(role: unknown): role is UserRole {
 
 async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
   if (!isSupabaseConfigured) return null;
+  
+  const timeout = new Promise<null>((resolve) => setTimeout(() => {
+    console.log('[AUTH] fetchProfileSafe timeout');
+    resolve(null);
+  }, 3000));
+
   try {
-    const { data, error } = await supabase
+    const profilePromise = supabase
       .from("profiles")
       .select("name, role")
       .eq("id", userId)
       .maybeSingle();
+    
+    const result = await Promise.race([profilePromise, timeout]);
+    
+    if (!result || result === null) return null;
+    
+    const { data, error } = result;
     if (error || !data) return null;
     return {
       name: data.name || undefined,
@@ -91,8 +103,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resolveAuthUser = useCallback(async (): Promise<AuthUser | null> => {
     if (!isSupabaseConfigured) return null;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    let session = sessionData?.session;
+    console.log('[AUTH] resolveAuthUser: Getting session...');
+    const sessionTimeout = new Promise<null>((resolve) => setTimeout(() => {
+      console.log('[AUTH] getSession timeout');
+      resolve(null);
+    }, 5000));
+
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      sessionTimeout
+    ]);
+
+    if (!sessionResult) {
+      console.log('[AUTH] Session fetch timed out');
+      return null;
+    }
+
+    let session = sessionResult.data?.session;
 
     if (!session) {
       try {
@@ -103,13 +130,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (!session?.user) return null;
+    if (!session?.user) {
+      console.log('[AUTH] No session user found');
+      return null;
+    }
 
     const authUser = session.user;
     const userId = authUser.id;
     const email = authUser.email || "";
 
+    console.log('[AUTH] Fetching profile for userId:', userId);
     const profile = await fetchProfileSafe(userId);
+    console.log('[AUTH] Profile fetched:', !!profile);
+    
     const cached = loadUserFromStorage();
     const cachedMatchesUser = cached?.id === userId;
 
@@ -126,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (isValidRole(authUser.user_metadata?.role) ? authUser.user_metadata.role : null) ||
       DEFAULT_ROLE;
 
+    console.log('[AUTH] Resolved user - role:', role);
     return { id: userId, email, name, role };
   }, []);
 
