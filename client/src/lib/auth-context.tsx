@@ -76,7 +76,7 @@ async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?:
 export function AuthProvider({ children }: { children: ReactNode }) {
   const cachedUser = loadUserFromStorage();
   const [user, setUser] = useState<AuthUser | null>(cachedUser);
-  const [authLoading, setAuthLoading] = useState<boolean>(!cachedUser);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
   
   const userRef = useRef<AuthUser | null>(cachedUser);
   const bootstrapComplete = useRef(false);
@@ -135,26 +135,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const bootstrap = async () => {
       if (bootstrapComplete.current) return;
 
-      if (!userRef.current) {
-        setAuthLoading(true);
-      }
-
       try {
         const resolved = await resolveAuthUser();
         if (!isMounted.current) return;
 
         if (resolved) {
           updateUser(resolved);
-        } else if (!userRef.current) {
+        } else {
           updateUser(null);
         }
       } catch {
-        if (isMounted.current && !userRef.current) {
+        if (isMounted.current) {
           updateUser(null);
         }
       } finally {
         if (isMounted.current) {
-          setAuthLoading(false);
           bootstrapComplete.current = true;
         }
       }
@@ -175,10 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
             try {
               const resolved = await resolveAuthUser();
-              if (isMounted.current) {
-                if (resolved) {
-                  updateUser(resolved);
-                }
+              if (isMounted.current && resolved) {
+                updateUser(resolved);
               }
             } catch {
               // Keep existing user on error
