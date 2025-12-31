@@ -58,53 +58,30 @@ function isValidRole(role: unknown): role is UserRole {
 async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
   if (!isSupabaseConfigured) return null;
   
-  console.log('[AUTH] fetchProfileSafe starting for userId:', userId);
-  
   const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => {
-      console.log('[AUTH] fetchProfileSafe TIMEOUT after 5s');
-      resolve(null);
-    }, 5000);
+    setTimeout(() => resolve(null), 5000);
   });
 
   const queryPromise = supabase
     .from("profiles")
     .select("name, role")
     .eq("id", userId)
-    .maybeSingle()
-    .then(result => {
-      console.log('[AUTH] fetchProfileSafe query completed - data:', !!result.data, 'error:', result.error?.message);
-      return result;
-    });
+    .maybeSingle();
 
   try {
     const result = await Promise.race([queryPromise, timeoutPromise]);
     
-    if (result === null) {
-      console.log('[AUTH] fetchProfileSafe timed out');
-      return null;
-    }
+    if (result === null) return null;
     
     const { data, error } = result;
     
-    if (error) {
-      console.error('[AUTH] fetchProfileSafe error:', error.message);
-      return null;
-    }
-    
-    if (!data) {
-      console.log('[AUTH] fetchProfileSafe no data found');
-      return null;
-    }
-    
-    console.log('[AUTH] fetchProfileSafe SUCCESS - role:', data.role, 'name:', data.name);
+    if (error || !data) return null;
     
     return {
       name: data.name || undefined,
       role: isValidRole(data.role) ? data.role : undefined,
     };
-  } catch (err) {
-    console.error('[AUTH] fetchProfileSafe exception:', err);
+  } catch {
     return null;
   }
 }
@@ -130,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let session = providedSession;
 
     if (!session) {
-      console.log('[AUTH] resolveAuthUser: Getting session...');
       const { data: sessionData } = await supabase.auth.getSession();
       session = sessionData?.session;
 
@@ -142,14 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Refresh failed
         }
       }
-    } else {
-      console.log('[AUTH] Using provided session');
     }
 
-    if (!session?.user) {
-      console.log('[AUTH] No session user found');
-      return null;
-    }
+    if (!session?.user) return null;
 
     const authUser = session.user;
     const userId = authUser.id;
@@ -158,17 +129,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cached = loadUserFromStorage();
     const cachedMatchesUser = cached?.id === userId;
 
-    console.log('[AUTH] Checking metadata role:', authUser.user_metadata?.role);
-    console.log('[AUTH] Checking cached role:', cached?.role);
-
     let profile: { name?: string; role?: UserRole } | null = null;
     
     if (!authUser.user_metadata?.role && !cached?.role) {
-      console.log('[AUTH] No metadata/cached role found, fetching profile...');
       profile = await fetchProfileSafe(userId);
-      console.log('[AUTH] Profile fetched:', !!profile, 'Role:', profile?.role);
-    } else {
-      console.log('[AUTH] Skipping profile fetch - using metadata/cache');
     }
 
     const name =
@@ -184,7 +148,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile?.role ||
       DEFAULT_ROLE;
 
-    console.log('[AUTH] Resolved user - role:', role);
     return { id: userId, email, name, role };
   }, []);
 
@@ -219,7 +182,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authSubscription = isSupabaseConfigured
       ? supabase.auth.onAuthStateChange(async (event, session) => {
           if (!isMounted.current) return;
-          console.log('[AUTH] Event:', event, 'Session:', !!session, 'User:', !!session?.user);
 
           if (event === "SIGNED_OUT") {
             updateUser(null);
@@ -228,16 +190,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-            console.log('[AUTH] Starting user resolution for', event);
             try {
               const resolved = await resolveAuthUser(session);
-              console.log('[AUTH] Resolved user:', !!resolved);
               if (isMounted.current) {
                 if (resolved) {
-                  console.log('[AUTH] Updating with resolved user');
                   updateUser(resolved);
                 } else if (session?.user && event === "SIGNED_IN") {
-                  console.log('[AUTH] Using fallback user (resolved was null)');
                   const fallbackUser: AuthUser = {
                     id: session.user.id,
                     email: session.user.email || "",
@@ -247,10 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   updateUser(fallbackUser);
                 }
               }
-            } catch (err) {
-              console.error('[AUTH] Error resolving user:', err);
+            } catch {
               if (isMounted.current && session?.user && event === "SIGNED_IN") {
-                console.log('[AUTH] Using fallback user (error caught)');
                 const fallbackUser: AuthUser = {
                   id: session.user.id,
                   email: session.user.email || "",
@@ -278,7 +234,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string): Promise<AuthUser | null> => {
       if (!isSupabaseConfigured) return null;
 
-      console.log('[AUTH] Login started');
       localStorage.removeItem(STORAGE_KEY);
       userRef.current = null;
       setUser(null);
@@ -286,17 +241,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (!data.user) throw new Error("Login failed: no user returned");
-      console.log('[AUTH] signInWithPassword succeeded, waiting for state update...');
 
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
-          console.log('[AUTH] Login timeout - resolving with:', userRef.current);
           resolve(userRef.current);
         }, 5000);
 
         const checkInterval = setInterval(() => {
           if (userRef.current) {
-            console.log('[AUTH] User state updated, resolving');
             clearTimeout(timeout);
             clearInterval(checkInterval);
             resolve(userRef.current);
