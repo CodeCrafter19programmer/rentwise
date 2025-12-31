@@ -58,22 +58,53 @@ function isValidRole(role: unknown): role is UserRole {
 async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
   if (!isSupabaseConfigured) return null;
   
+  console.log('[AUTH] fetchProfileSafe starting for userId:', userId);
+  
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => {
+      console.log('[AUTH] fetchProfileSafe TIMEOUT after 5s');
+      resolve(null);
+    }, 5000);
+  });
+
+  const queryPromise = supabase
+    .from("profiles")
+    .select("name, role")
+    .eq("id", userId)
+    .maybeSingle()
+    .then(result => {
+      console.log('[AUTH] fetchProfileSafe query completed - data:', !!result.data, 'error:', result.error?.message);
+      return result;
+    });
+
   try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("name, role")
-      .eq("id", userId)
-      .maybeSingle();
+    const result = await Promise.race([queryPromise, timeoutPromise]);
     
-    console.log('[AUTH] fetchProfileSafe result - data:', !!data, 'error:', !!error, 'role:', data?.role);
+    if (result === null) {
+      console.log('[AUTH] fetchProfileSafe timed out');
+      return null;
+    }
     
-    if (error || !data) return null;
+    const { data, error } = result;
+    
+    if (error) {
+      console.error('[AUTH] fetchProfileSafe error:', error.message);
+      return null;
+    }
+    
+    if (!data) {
+      console.log('[AUTH] fetchProfileSafe no data found');
+      return null;
+    }
+    
+    console.log('[AUTH] fetchProfileSafe SUCCESS - role:', data.role, 'name:', data.name);
+    
     return {
       name: data.name || undefined,
       role: isValidRole(data.role) ? data.role : undefined,
     };
   } catch (err) {
-    console.error('[AUTH] fetchProfileSafe error:', err);
+    console.error('[AUTH] fetchProfileSafe exception:', err);
     return null;
   }
 }
