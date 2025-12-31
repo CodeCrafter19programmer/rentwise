@@ -117,7 +117,7 @@ export default function AdminManagers() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-        const response = await fetch("/api/admin/managers", {
+        const response = await fetch("/api/admin/managers-test", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

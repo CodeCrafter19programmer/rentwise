@@ -46,6 +46,36 @@ export async function registerRoutes(
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Test endpoint without middleware
+  app.post("/api/admin/managers-test", async (req, res) => {
+    try {
+      console.log('[TEST] Manager test endpoint hit');
+      console.log('[TEST] Body:', req.body);
+      
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+      
+      console.log('[TEST] URL configured:', !!supabaseUrl);
+      console.log('[TEST] Service key configured:', !!supabaseServiceKey);
+      
+      if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({ 
+          message: "Missing env vars",
+          hasUrl: !!supabaseUrl,
+          hasKey: !!supabaseServiceKey
+        });
+      }
+      
+      return res.json({ 
+        message: "Test endpoint working",
+        envVarsOk: true
+      });
+    } catch (error: any) {
+      console.error('[TEST] Error:', error);
+      return res.status(500).json({ message: error.message });
+    }
+  });
+
   // Protected API routes example - maintenance requests
   app.post(
     "/api/maintenance-requests",
