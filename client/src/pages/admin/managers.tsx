@@ -28,7 +28,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const managerFormSchema = z.object({
@@ -43,6 +43,7 @@ export default function AdminManagers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: managers = [] } = useQuery({
     queryKey: ["profiles", "managers"],
@@ -82,6 +83,58 @@ export default function AdminManagers() {
     (manager.email || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const createManagerMutation = useMutation({
+    mutationFn: async (data: ManagerFormData) => {
+      // Generate a temporary password
+      const tempPassword = Math.random().toString(36).slice(-12);
+      
+      // Create auth user via Supabase Admin API
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: data.email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          name: data.name,
+          role: "manager",
+        },
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Failed to create user");
+
+      // Create profile record
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .insert({
+          id: authData.user.id,
+          email: data.email,
+          name: data.name,
+          role: "manager",
+          phone: data.phone,
+        });
+
+      if (profileError) throw profileError;
+
+      return { user: authData.user, tempPassword };
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["profiles", "managers"] });
+      toast({
+        title: "Manager added successfully",
+        description: `${variables.name} has been added. Temporary password: ${data.tempPassword}`,
+      });
+      setIsDialogOpen(false);
+      form.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to add manager",
+        description: error.message || "An error occurred while adding the manager.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const form = useForm<ManagerFormData>({
     resolver: zodResolver(managerFormSchema),
     defaultValues: {
@@ -92,12 +145,7 @@ export default function AdminManagers() {
   });
 
   const onSubmit = (data: ManagerFormData) => {
-    toast({
-      title: "Manager added",
-      description: `${data.name} has been added as a property manager.`,
-    });
-    setIsDialogOpen(false);
-    form.reset();
+    createManagerMutation.mutate(data);
   };
 
   return (
@@ -176,8 +224,8 @@ export default function AdminManagers() {
                     <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit" data-testid="button-submit-manager">
-                      Add Manager
+                    <Button type="submit" data-testid="button-submit-manager" disabled={createManagerMutation.isPending}>
+                      {createManagerMutation.isPending ? "Adding..." : "Add Manager"}
                     </Button>
                   </DialogFooter>
                 </form>
