@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrap();
 
     const authSubscription = isSupabaseConfigured
-      ? supabase.auth.onAuthStateChange(async (event) => {
+      ? supabase.auth.onAuthStateChange(async (event, session) => {
           if (!isMounted.current) return;
 
           if (event === "SIGNED_OUT") {
@@ -170,11 +170,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
             try {
               const resolved = await resolveAuthUser();
-              if (isMounted.current && resolved) {
-                updateUser(resolved);
+              if (isMounted.current) {
+                if (resolved) {
+                  updateUser(resolved);
+                } else if (session?.user && event === "SIGNED_IN") {
+                  const fallbackUser: AuthUser = {
+                    id: session.user.id,
+                    email: session.user.email || "",
+                    name: session.user.email?.split("@")[0] || "User",
+                    role: DEFAULT_ROLE,
+                  };
+                  updateUser(fallbackUser);
+                }
               }
             } catch {
-              // Keep existing user on error
+              if (isMounted.current && session?.user && event === "SIGNED_IN") {
+                const fallbackUser: AuthUser = {
+                  id: session.user.id,
+                  email: session.user.email || "",
+                  name: session.user.email?.split("@")[0] || "User",
+                  role: DEFAULT_ROLE,
+                };
+                updateUser(fallbackUser);
+              }
             } finally {
               if (isMounted.current) {
                 setAuthLoading(false);
@@ -196,34 +214,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       localStorage.removeItem(STORAGE_KEY);
       userRef.current = null;
+      setUser(null);
 
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (!data.user) throw new Error("Login failed: no user returned");
 
-      const userId = data.user.id;
-      const userEmail = data.user.email || email;
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve(userRef.current);
+        }, 5000);
 
-      const profile = await fetchProfileSafe(userId);
-
-      const name =
-        profile?.name ||
-        data.user.user_metadata?.name ||
-        userEmail.split("@")[0] ||
-        "User";
-
-      const role: UserRole =
-        profile?.role ||
-        (isValidRole(data.user.user_metadata?.role) ? data.user.user_metadata.role : null) ||
-        DEFAULT_ROLE;
-
-      const authUser: AuthUser = { id: userId, email: userEmail, name, role };
-      updateUser(authUser);
-      setAuthLoading(false);
-
-      return authUser;
+        const checkInterval = setInterval(() => {
+          if (userRef.current) {
+            clearTimeout(timeout);
+            clearInterval(checkInterval);
+            resolve(userRef.current);
+          }
+        }, 100);
+      });
     },
-    [updateUser],
+    [],
   );
 
   const logout = useCallback(async () => {
