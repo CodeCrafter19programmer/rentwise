@@ -85,37 +85,32 @@ export default function AdminManagers() {
 
   const createManagerMutation = useMutation({
     mutationFn: async (data: ManagerFormData) => {
-      // Generate a temporary password
-      const tempPassword = Math.random().toString(36).slice(-12);
-      
-      // Create auth user via Supabase Admin API
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: data.email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: {
-          name: data.name,
-          role: "manager",
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const response = await fetch("/api/admin/managers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
         },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+        }),
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Failed to create user");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to create manager");
+      }
 
-      // Create profile record
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          id: authData.user.id,
-          email: data.email,
-          name: data.name,
-          role: "manager",
-          phone: data.phone,
-        });
-
-      if (profileError) throw profileError;
-
-      return { user: authData.user, tempPassword };
+      return await response.json();
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["profiles", "managers"] });

@@ -30,6 +30,12 @@ const adminInviteSchema = z.object({
   role: z.enum(["admin", "manager", "tenant"]),
 });
 
+const createManagerSchema = z.object({
+  name: z.string().min(1).max(200).transform(sanitizeText),
+  email: z.string().email().transform(sanitizeText),
+  phone: z.string().min(10).max(20).transform(sanitizeText),
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -89,6 +95,74 @@ export async function registerRoutes(
         res.json({ message: "Admin users endpoint", users: [] });
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch users" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/admin/managers",
+    requireAuth,
+    requireRole("admin"),
+    validateBody(createManagerSchema),
+    async (req: AuthenticatedRequest, res) => {
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
+      if (!supabaseUrl || !supabaseServiceKey) {
+        return res.status(500).json({
+          message: "Server is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+        });
+      }
+
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+      });
+
+      try {
+        const { name, email, phone } = req.body as z.infer<typeof createManagerSchema>;
+        
+        // Generate temporary password
+        const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+
+        // Create auth user
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            name,
+            role: "manager",
+          },
+        });
+
+        if (authError || !authData?.user) {
+          return res.status(400).json({ message: authError?.message || "Failed to create manager" });
+        }
+
+        // Create profile record
+        const { error: profileError } = await supabaseAdmin
+          .from("profiles")
+          .insert({
+            id: authData.user.id,
+            email,
+            name,
+            role: "manager",
+            phone,
+          });
+
+        if (profileError) {
+          return res.status(400).json({ message: profileError.message || "Failed to create profile" });
+        }
+
+        return res.json({
+          message: "Manager created successfully",
+          userId: authData.user.id,
+          email,
+          name,
+          tempPassword,
+        });
+      } catch (e: any) {
+        return res.status(500).json({ message: e?.message || "Failed to create manager" });
       }
     }
   );
