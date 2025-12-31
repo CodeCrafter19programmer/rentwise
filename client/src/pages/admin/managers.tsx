@@ -86,16 +86,27 @@ export default function AdminManagers() {
   const createManagerMutation = useMutation({
     mutationFn: async (data: ManagerFormData) => {
       try {
-        console.log('[MANAGER] Getting session token...');
+        console.log('[MANAGER] Getting session token from localStorage...');
         
-        // Race getSession with a timeout
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session timeout')), 5000)
-        );
+        // Get token directly from localStorage where Supabase stores it
+        const supabaseAuthKey = `sb-${import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0]}-auth-token`;
+        const storedSession = localStorage.getItem(supabaseAuthKey);
         
-        const { data: sessionData } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-        const token = sessionData?.session?.access_token;
+        let token: string | undefined;
+        if (storedSession) {
+          try {
+            const parsed = JSON.parse(storedSession);
+            token = parsed?.access_token || parsed?.currentSession?.access_token;
+          } catch (e) {
+            console.error('[MANAGER] Failed to parse stored session:', e);
+          }
+        }
+
+        if (!token) {
+          console.log('[MANAGER] No token in localStorage, trying getSession...');
+          const { data: sessionData } = await supabase.auth.getSession();
+          token = sessionData?.session?.access_token;
+        }
 
         if (!token) {
           throw new Error("Not authenticated - please refresh and try again");
