@@ -42,12 +42,12 @@ export async function registerRoutes(
 ): Promise<Server> {
   
   // Health check endpoint
-  app.get("/api/health", (_req, res) => {
+  app.get("/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
   // Test endpoint without middleware
-  app.post("/api/admin/managers-test", async (req, res) => {
+  app.post("/admin/managers-test", async (req, res) => {
     try {
       console.log('[TEST] Manager test endpoint hit');
       console.log('[TEST] Body:', req.body);
@@ -78,7 +78,7 @@ export async function registerRoutes(
 
   // Protected API routes example - maintenance requests
   app.post(
-    "/api/maintenance-requests",
+    "/maintenance-requests",
     requireAuth,
     requireRole("tenant"),
     validateBody(maintenanceRequestSchema),
@@ -98,7 +98,7 @@ export async function registerRoutes(
 
   // Protected API routes example - messages
   app.post(
-    "/api/messages",
+    "/messages",
     requireAuth,
     validateBody(messageSchema),
     async (req: AuthenticatedRequest, res) => {
@@ -116,7 +116,7 @@ export async function registerRoutes(
 
   // Admin-only route example
   app.get(
-    "/api/admin/users",
+    "/admin/users",
     requireAuth,
     requireRole("admin"),
     async (_req: AuthenticatedRequest, res) => {
@@ -130,7 +130,7 @@ export async function registerRoutes(
   );
 
   app.post(
-    "/api/admin/managers",
+    "/admin/managers",
     requireAuth,
     requireRole("admin"),
     validateBody(createManagerSchema),
@@ -224,7 +224,7 @@ export async function registerRoutes(
   );
 
   app.post(
-    "/api/admin/invite",
+    "/admin/invite",
     requireAuth,
     requireRole("admin"),
     validateBody(adminInviteSchema),
@@ -280,7 +280,7 @@ export async function registerRoutes(
 
   // Manager route example
   app.get(
-    "/api/manager/properties",
+    "/manager/properties",
     requireAuth,
     requireRole("manager", "admin"),
     async (req: AuthenticatedRequest, res) => {
