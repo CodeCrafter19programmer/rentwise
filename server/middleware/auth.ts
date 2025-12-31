@@ -8,14 +8,20 @@ function getSupabaseClient(): SupabaseClient | null {
   if (supabase) return supabase;
   
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   
   if (!supabaseUrl || !supabaseKey) {
     console.warn("Supabase not configured - auth middleware will reject all requests");
     return null;
   }
   
-  supabase = createClient(supabaseUrl, supabaseKey);
+  supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
   return supabase;
 }
 
@@ -39,12 +45,14 @@ export async function requireAuth(
   try {
     const client = getSupabaseClient();
     if (!client) {
+      console.error("[AUTH] Supabase client not available");
       return res.status(503).json({ message: "Authentication service unavailable" });
     }
 
     const authHeader = req.headers.authorization;
     
     if (!authHeader?.startsWith("Bearer ")) {
+      console.error("[AUTH] Missing or invalid authorization header");
       return res.status(401).json({ message: "Missing or invalid authorization header" });
     }
 
@@ -54,25 +62,41 @@ export async function requireAuth(
     const { data: { user }, error } = await client.auth.getUser(token);
     
     if (error || !user) {
+      console.error("[AUTH] Token verification failed:", error?.message);
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
-    // Fetch user profile for role information - use maybeSingle for RLS safety
-    const { data: profile } = await client
-      .from("profiles")
-      .select("id, email, role")
-      .eq("id", user.id)
-      .maybeSingle();
+    console.log("[AUTH] User authenticated:", user.id, user.email);
+
+    // Use role from user metadata if available, otherwise fetch from profile
+    let role = user.user_metadata?.role as "admin" | "manager" | "tenant" | undefined;
+    
+    if (!role) {
+      console.log("[AUTH] Fetching role from profile for user:", user.id);
+      const { data: profile, error: profileError } = await client
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      if (profileError) {
+        console.error("[AUTH] Profile fetch error:", profileError.message);
+      }
+      
+      role = (profile?.role as "admin" | "manager" | "tenant") || "tenant";
+    }
+
+    console.log("[AUTH] Resolved role:", role);
 
     req.user = {
       id: user.id,
       email: user.email || "",
-      role: (profile?.role as "admin" | "manager" | "tenant") || "tenant",
+      role,
     };
 
     next();
   } catch (error) {
-    console.error("Auth middleware error:", error);
+    console.error("[AUTH] Middleware error:", error);
     return res.status(500).json({ message: "Authentication error" });
   }
 }
