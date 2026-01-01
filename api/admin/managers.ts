@@ -22,24 +22,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Get environment variables
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || "";
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
-    console.log('[CREATE MANAGER] Env vars:', { hasUrl: !!supabaseUrl, hasKey: !!supabaseServiceKey });
+    console.log('[CREATE MANAGER] Env vars:', { 
+      hasUrl: !!supabaseUrl, 
+      hasServiceKey: !!supabaseServiceKey,
+      hasAnonKey: !!supabaseAnonKey 
+    });
 
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
       return res.status(500).json({
         message: "Server configuration error",
-        details: { hasUrl: !!supabaseUrl, hasKey: !!supabaseServiceKey }
+        details: { hasUrl: !!supabaseUrl, hasServiceKey: !!supabaseServiceKey, hasAnonKey: !!supabaseAnonKey }
       });
     }
 
-    // Create Supabase admin client
+    // Create Supabase clients - anon for auth verification, service for admin operations
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
     });
 
-    // Verify the user's token and check role
+    // Verify the user's token and check role using anon key client
     console.log('[CREATE MANAGER] Verifying user token...');
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     
     if (authError || !user) {
       console.error('[CREATE MANAGER] Auth error:', authError?.message);
