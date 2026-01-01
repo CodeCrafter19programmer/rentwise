@@ -89,12 +89,13 @@ export default function AdminManagers() {
         console.log('[MANAGER] Getting auth token...');
 
         let token: string | undefined;
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Session fetch timeout')), 3000),
-        );
-        const sessionPromise = supabase.auth.getSession();
-
+        
+        // Try getSession first with timeout
         try {
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 3000),
+          );
+          const sessionPromise = supabase.auth.getSession();
           const { data: sessionData } = (await Promise.race([
             sessionPromise,
             timeoutPromise,
@@ -103,36 +104,20 @@ export default function AdminManagers() {
           if (token) {
             console.log('[MANAGER] Got token from getSession');
           }
-        } catch {
-          console.error('[MANAGER] getSession timed out');
-        }
-
-        if (!token) {
-          console.log('[MANAGER] No token from getSession, trying localStorage...');
-
-          const possibleKeys = Object.keys(localStorage).filter(
-            (key) => key.includes('supabase') || key.includes('sb-'),
-          );
-
-          console.log('[MANAGER] Found localStorage keys:', possibleKeys);
-
-          for (const key of possibleKeys) {
+        } catch (e: any) {
+          if (e?.message === 'timeout') {
+            console.log('[MANAGER] getSession timed out, trying refreshSession...');
             try {
-              const value = localStorage.getItem(key);
-              if (value) {
-                const parsed = JSON.parse(value);
-                token =
-                  parsed?.access_token ||
-                  parsed?.currentSession?.access_token ||
-                  parsed?.session?.access_token;
-                if (token) {
-                  console.log('[MANAGER] Found token in key:', key);
-                  break;
-                }
+              const { data: refreshData } = await supabase.auth.refreshSession();
+              token = refreshData?.session?.access_token;
+              if (token) {
+                console.log('[MANAGER] Got fresh token from refreshSession');
               }
-            } catch {
-              // Skip invalid JSON
+            } catch (refreshError) {
+              console.error('[MANAGER] refreshSession failed:', refreshError);
             }
+          } else {
+            console.error('[MANAGER] getSession error:', e);
           }
         }
 
