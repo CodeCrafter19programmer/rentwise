@@ -48,8 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     
     if (authError || !user) {
-      console.error('[CREATE MANAGER] Auth error:', authError?.message);
-      return res.status(401).json({ message: 'Invalid token' });
+      const reason = authError?.message || "Unknown auth error";
+      console.error('[CREATE MANAGER] Auth error:', reason);
+      return res.status(401).json({ message: `Invalid token: ${reason}` });
     }
 
     console.log('[CREATE MANAGER] User authenticated:', user.email);

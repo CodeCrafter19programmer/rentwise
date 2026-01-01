@@ -87,50 +87,52 @@ export default function AdminManagers() {
     mutationFn: async (data: ManagerFormData) => {
       try {
         console.log('[MANAGER] Getting auth token...');
-        
-        // Try all possible localStorage keys that Supabase uses
+
         let token: string | undefined;
-        const possibleKeys = Object.keys(localStorage).filter(key => 
-          key.includes('supabase') || key.includes('sb-')
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Session fetch timeout')), 3000),
         );
-        
-        console.log('[MANAGER] Found localStorage keys:', possibleKeys);
-        
-        for (const key of possibleKeys) {
-          try {
-            const value = localStorage.getItem(key);
-            if (value) {
-              const parsed = JSON.parse(value);
-              // Try different possible structures
-              token = parsed?.access_token || 
-                     parsed?.currentSession?.access_token ||
-                     parsed?.session?.access_token;
-              if (token) {
-                console.log('[MANAGER] Found token in key:', key);
-                break;
-              }
-            }
-          } catch (e) {
-            // Skip invalid JSON
+        const sessionPromise = supabase.auth.getSession();
+
+        try {
+          const { data: sessionData } = (await Promise.race([
+            sessionPromise,
+            timeoutPromise,
+          ])) as any;
+          token = sessionData?.session?.access_token;
+          if (token) {
+            console.log('[MANAGER] Got token from getSession');
           }
+        } catch {
+          console.error('[MANAGER] getSession timed out');
         }
 
         if (!token) {
-          console.log('[MANAGER] No token in localStorage, getting fresh session...');
-          // Get fresh session with timeout protection
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Session fetch timeout')), 3000)
+          console.log('[MANAGER] No token from getSession, trying localStorage...');
+
+          const possibleKeys = Object.keys(localStorage).filter(
+            (key) => key.includes('supabase') || key.includes('sb-'),
           );
-          
-          const sessionPromise = supabase.auth.getSession();
-          
-          try {
-            const { data: sessionData } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-            token = sessionData?.session?.access_token;
-            console.log('[MANAGER] Got token from getSession');
-          } catch (timeoutError) {
-            console.error('[MANAGER] getSession timed out');
-            throw new Error("Session timeout - please refresh the page and try again");
+
+          console.log('[MANAGER] Found localStorage keys:', possibleKeys);
+
+          for (const key of possibleKeys) {
+            try {
+              const value = localStorage.getItem(key);
+              if (value) {
+                const parsed = JSON.parse(value);
+                token =
+                  parsed?.access_token ||
+                  parsed?.currentSession?.access_token ||
+                  parsed?.session?.access_token;
+                if (token) {
+                  console.log('[MANAGER] Found token in key:', key);
+                  break;
+                }
+              }
+            } catch {
+              // Skip invalid JSON
+            }
           }
         }
 
