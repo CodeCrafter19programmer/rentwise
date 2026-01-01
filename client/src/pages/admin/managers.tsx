@@ -108,13 +108,20 @@ export default function AdminManagers() {
           if (e?.message === 'timeout') {
             console.log('[MANAGER] getSession timed out, trying refreshSession...');
             try {
-              const { data: refreshData } = await supabase.auth.refreshSession();
+              const refreshTimeout = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('refresh timeout')), 3000),
+              );
+              const refreshPromise = supabase.auth.refreshSession();
+              const { data: refreshData } = (await Promise.race([
+                refreshPromise,
+                refreshTimeout,
+              ])) as any;
               token = refreshData?.session?.access_token;
               if (token) {
                 console.log('[MANAGER] Got fresh token from refreshSession');
               }
-            } catch (refreshError) {
-              console.error('[MANAGER] refreshSession failed:', refreshError);
+            } catch (refreshError: any) {
+              console.error('[MANAGER] refreshSession failed:', refreshError?.message);
             }
           } else {
             console.error('[MANAGER] getSession error:', e);
