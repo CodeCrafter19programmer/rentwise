@@ -175,7 +175,9 @@ export default function AdminManagers() {
         }
 
         const result = await response.json();
-        console.log('[MANAGER] Manager created successfully:', result);
+        console.log('[MANAGER] Manager created successfully');
+        console.log('[MANAGER] Response data:', JSON.stringify(result, null, 2));
+        console.log('[MANAGER] Temp password:', result.tempPassword);
         return result;
       } catch (error: any) {
         console.error('[MANAGER] Error creating manager:', error);
