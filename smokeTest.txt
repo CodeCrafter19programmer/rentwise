@@ -1,0 +1,92 @@
+4. Manual test scripts for real users
+Use three real test accounts: Tenant A, Tenant B, and Manager M (and optionally an Admin).
+
+A. Tenant data flow (Tenant A)
+Setup
+In Supabase:
+Create a profile row for Tenant A with role tenant and id matching their auth UID.
+Create:
+A property P1 with manager_id = Manager M.
+A unit U1 under P1.
+An active lease L1 with tenant_id = Tenant A, unit_id = U1, is_active = true.
+2–3 payments linked to L1.
+1–2 maintenance_requests with tenant_id = Tenant A, unit_id = U1.
+Flow
+Login as Tenant A.
+Dashboard / Lease page
+Expect to see:
+Property name from properties.
+Unit details from units.
+Lease details from leases.
+Payments
+Tenant should see only payments linked to L1.
+Attempt to pay a payment:
+UI should update status, paid_at, payment_method.
+Confirm in DB that only these fields changed.
+Maintenance
+View requests:
+Only Tenant A’s requests.
+Create new request:
+It should appear in list.
+DB row must have tenant_id = Tenant A, unit_id = U1.
+Messages
+Send a message to Manager M.
+Confirm:
+Message appears in tenant’s list.
+In DB, sender_id = Tenant A, receiver_id = Manager M.
+When Manager marks read (see manager tests), tenant should see is_read = true.
+RLS checks
+As Tenant A, manually try to access:
+/tenant/lease of another tenant (or by ID, if URL allows) → expect 404 / unauthorized.
+In Supabase SQL (using Tenant A’s JWT if you have it), ensure:
+Selecting from leases only returns L1.
+Selecting from units and properties only returns those related to L1.
+
+
+B. Tenant isolation (Tenant B)
+Setup
+Create Tenant B with own profile and lease L2 on unit U2 / property P2.
+Flow
+Login as Tenant B.
+Confirm:
+Sees only L2, U2, P2.
+Sees only their own payments, maintenance, and messages.
+RLS checks
+Ensure Tenant B cannot see Tenant A’s:
+Lease, property, unit, payments, maintenance, or messages.
+
+
+C. Manager data flow (Manager M)
+Setup
+Manager profile with role manager and id matching auth UID.
+Manager M is manager_id for P1 (and optionally not for P2 to verify isolation).
+Flow
+Login as Manager M.
+Properties
+Should see only properties they manage (P1) unless they are also an admin.
+Leases
+Should see leases for units under properties they manage (L1 but not L2 if P2 has different manager).
+Payments
+See payments tied to their properties’ leases.
+Trigger a “record payment” / update payment flow:
+Ensure only status, paid_at, payment_method change.
+Maintenance
+See all maintenance_requests for units under their properties.
+Change status / assign / update:
+Changes should succeed only when maintenance_requests.unit_id is under their property.
+Messages
+See messages where they are sender or receiver.
+Mark a message from Tenant A as read:
+is_read should flip to true.
+No other message fields should change.
+Expenses / Reports
+Create a new expense for P1 and confirm it appears in reports.
+Ensure manager cannot create expenses for properties they don’t manage.
+D. Admin flow (if you use admin role)
+Setup
+Profile with role = 'admin'.
+Flow
+Confirm:
+Can read all profiles, properties, units, leases, payments, expenses (read-only unless you intentionally add admin write policies).
+RLS:
+Ensure update/insert attempts fail where no write policies exist (e.g., admin trying to update payments directly, if not allowed).

@@ -3,8 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    console.log('[CREATE MANAGER] Direct handler - request received');
-    
     // Only allow POST
     if (req.method !== 'POST') {
       return res.status(405).json({ message: 'Method not allowed' });
@@ -17,24 +15,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const token = authHeader.substring(7);
-    console.log('[CREATE MANAGER] Token received');
 
-    // Get environment variables
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || "";
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
-
-    console.log('[CREATE MANAGER] Env vars:', { 
-      hasUrl: !!supabaseUrl, 
-      hasServiceKey: !!supabaseServiceKey,
-      hasAnonKey: !!supabaseAnonKey 
-    });
+    // Get environment variables (server-side only, no VITE_ fallbacks)
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
-      return res.status(500).json({
-        message: "Server configuration error",
-        details: { hasUrl: !!supabaseUrl, hasServiceKey: !!supabaseServiceKey, hasAnonKey: !!supabaseAnonKey }
-      });
+      return res.status(500).json({ message: "Server configuration error" });
     }
 
     // Create Supabase clients - anon for auth verification, service for admin operations
@@ -44,25 +32,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Verify the user's token and check role using anon key client
-    console.log('[CREATE MANAGER] Verifying user token...');
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
     
     if (authError || !user) {
-      const reason = authError?.message || "Unknown auth error";
-      console.error('[CREATE MANAGER] Auth error:', reason);
-      return res.status(401).json({ message: `Invalid token: ${reason}` });
+      return res.status(401).json({ message: "Invalid or expired token" });
     }
-
-    console.log('[CREATE MANAGER] User authenticated:', user.email);
 
     // Check if user is admin
     const userRole = user.user_metadata?.role;
     if (userRole !== 'admin') {
-      console.error('[CREATE MANAGER] User role:', userRole, '- not admin');
       return res.status(403).json({ message: 'Admin access required' });
     }
-
-    console.log('[CREATE MANAGER] Admin verified, processing request...');
 
     // Parse request body
     const { name, email, phone } = req.body;
@@ -71,13 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ message: 'Name and email are required' });
     }
 
-    console.log('[CREATE MANAGER] Creating manager:', email);
-
     // Generate temporary password
     const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
 
     // Create auth user
-    console.log('[CREATE MANAGER] Creating auth user...');
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: tempPassword,
@@ -89,14 +66,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (createError || !authData?.user) {
-      console.error('[CREATE MANAGER] Create user error:', createError?.message);
       return res.status(400).json({ message: createError?.message || "Failed to create manager" });
     }
 
-    console.log('[CREATE MANAGER] Auth user created:', authData.user.id);
-
     // Create profile record
-    console.log('[CREATE MANAGER] Creating profile...');
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .insert({
@@ -108,11 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     if (profileError) {
-      console.error('[CREATE MANAGER] Profile error:', profileError.message);
       return res.status(400).json({ message: profileError.message || "Failed to create profile" });
     }
-
-    console.log('[CREATE MANAGER] Manager created successfully');
 
     return res.status(200).json({
       message: "Manager created successfully",
@@ -123,10 +93,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (error: any) {
-    console.error('[CREATE MANAGER] Unexpected error:', error);
-    return res.status(500).json({ 
-      message: error?.message || "Internal server error",
-      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 }

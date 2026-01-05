@@ -48,8 +48,10 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   const headerToken = req.get(CSRF_HEADER_NAME);
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+    const requestId = (req as any).requestId;
     return res.status(403).json({ 
-      message: "Invalid CSRF token. Please refresh the page and try again." 
+      message: "Invalid CSRF token. Please refresh the page and try again.",
+      requestId,
     });
   }
 

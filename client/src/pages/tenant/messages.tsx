@@ -265,7 +265,15 @@ export default function TenantMessages() {
                     variant="outline"
                     className="w-full"
                     onClick={() => setSelectedConversation({
-                      otherUser: manager,
+                      otherUser: {
+                        id: manager.id,
+                        name: manager.name,
+                        email: manager.email,
+                        role: manager.role,
+                        phone: null,
+                        avatarUrl: null,
+                        createdAt: null,
+                      },
                       lastMessage: {} as Message,
                       unreadCount: 0,
                     })}

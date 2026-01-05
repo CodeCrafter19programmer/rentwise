@@ -8,7 +8,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "admin-1",
     email: "admin@rentwise.com",
-    password: "hashed",
     name: "Sarah Johnson",
     phone: "(555) 123-4567",
     role: "admin" as UserRole,
@@ -18,7 +17,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "manager-1",
     email: "michael@rentwise.com",
-    password: "hashed",
     name: "Michael Chen",
     phone: "(555) 234-5678",
     role: "manager" as UserRole,
@@ -28,7 +26,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "manager-2",
     email: "emily@rentwise.com",
-    password: "hashed",
     name: "Emily Rodriguez",
     phone: "(555) 345-6789",
     role: "manager" as UserRole,
@@ -38,7 +35,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "tenant-1",
     email: "john@email.com",
-    password: "hashed",
     name: "John Smith",
     phone: "(555) 456-7890",
     role: "tenant" as UserRole,
@@ -48,7 +44,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "tenant-2",
     email: "lisa@email.com",
-    password: "hashed",
     name: "Lisa Williams",
     phone: "(555) 567-8901",
     role: "tenant" as UserRole,
@@ -58,7 +53,6 @@ export const mockProfiles: Profile[] = [
   {
     id: "tenant-3",
     email: "david@email.com",
-    password: "hashed",
     name: "David Brown",
     phone: "(555) 678-9012",
     role: "tenant" as UserRole,

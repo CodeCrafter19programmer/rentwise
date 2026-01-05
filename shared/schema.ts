@@ -9,10 +9,11 @@ export type PaymentStatus = "pending" | "paid" | "overdue" | "partial";
 export type MaintenanceStatus = "open" | "in_progress" | "resolved";
 export type MaintenancePriority = "low" | "medium" | "high";
 
+// Note: profiles.id references auth.users(id) from Supabase Auth
+// Password authentication is handled by Supabase Auth, not stored here
 export const profiles = pgTable("profiles", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey(), // UUID from auth.users
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
   name: text("name").notNull(),
   phone: text("phone"),
   role: text("role").$type<UserRole>().notNull().default("tenant"),

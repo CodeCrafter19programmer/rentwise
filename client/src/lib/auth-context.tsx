@@ -23,6 +23,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEY = "rentwise_auth_user";
 const DEFAULT_ROLE: UserRole = "tenant";
 const LOGIN_TIMEOUT_MS = 8000;
+const PROFILE_FETCH_TIMEOUT_MS = 15000; // Increased from 5s to avoid premature timeouts
+const MAX_PROFILE_RETRIES = 2;
 
 function saveUserToStorage(user: AuthUser | null): void {
   try {
@@ -55,11 +57,11 @@ function isValidRole(role: unknown): role is UserRole {
   return role === "admin" || role === "manager" || role === "tenant";
 }
 
-async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?: UserRole } | null> {
+async function fetchProfileSafe(userId: string, retryCount = 0): Promise<{ name?: string; role?: UserRole } | null> {
   if (!isSupabaseConfigured) return null;
   
   const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), 5000);
+    setTimeout(() => resolve(null), PROFILE_FETCH_TIMEOUT_MS);
   });
 
   const queryPromise = supabase
@@ -71,17 +73,35 @@ async function fetchProfileSafe(userId: string): Promise<{ name?: string; role?:
   try {
     const result = await Promise.race([queryPromise, timeoutPromise]);
     
-    if (result === null) return null;
+    if (result === null) {
+      // Timeout - retry if we haven't exceeded max retries
+      if (retryCount < MAX_PROFILE_RETRIES) {
+        console.warn(`[AUTH] Profile fetch timeout, retrying (${retryCount + 1}/${MAX_PROFILE_RETRIES})`);
+        return fetchProfileSafe(userId, retryCount + 1);
+      }
+      console.error("[AUTH] Profile fetch timed out after retries");
+      return null;
+    }
     
     const { data, error } = result;
     
-    if (error || !data) return null;
+    if (error) {
+      console.error("[AUTH] Profile fetch error:", error.message);
+      // Retry on error if we haven't exceeded max retries
+      if (retryCount < MAX_PROFILE_RETRIES) {
+        return fetchProfileSafe(userId, retryCount + 1);
+      }
+      return null;
+    }
+    
+    if (!data) return null;
     
     return {
       name: data.name || undefined,
       role: isValidRole(data.role) ? data.role : undefined,
     };
-  } catch {
+  } catch (err) {
+    console.error("[AUTH] Profile fetch exception:", err);
     return null;
   }
 }

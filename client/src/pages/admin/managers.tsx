@@ -86,8 +86,6 @@ export default function AdminManagers() {
   const createManagerMutation = useMutation({
     mutationFn: async (data: ManagerFormData) => {
       try {
-        console.log('[MANAGER] Getting auth token...');
-
         let token: string | undefined;
         
         // Try getSession first with timeout
@@ -101,12 +99,8 @@ export default function AdminManagers() {
             timeoutPromise,
           ])) as any;
           token = sessionData?.session?.access_token;
-          if (token) {
-            console.log('[MANAGER] Got token from getSession');
-          }
         } catch (e: any) {
           if (e?.message === 'timeout') {
-            console.log('[MANAGER] getSession timed out, trying refreshSession...');
             try {
               const refreshTimeout = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('refresh timeout')), 3000),
@@ -117,22 +111,15 @@ export default function AdminManagers() {
                 refreshTimeout,
               ])) as any;
               token = refreshData?.session?.access_token;
-              if (token) {
-                console.log('[MANAGER] Got fresh token from refreshSession');
-              }
-            } catch (refreshError: any) {
-              console.error('[MANAGER] refreshSession failed:', refreshError?.message);
+            } catch {
+              token = undefined;
             }
-          } else {
-            console.error('[MANAGER] getSession error:', e);
           }
         }
 
         if (!token) {
           throw new Error("Not authenticated - please log out and log back in");
         }
-
-        console.log('[MANAGER] Token retrieved, calling API...');
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -153,11 +140,8 @@ export default function AdminManagers() {
 
         clearTimeout(timeoutId);
 
-        console.log('[MANAGER] API response status:', response.status);
-
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('[MANAGER] API error response:', errorText);
           let errorMessage = "Failed to create manager";
           try {
             const errorJson = JSON.parse(errorText);
@@ -169,12 +153,8 @@ export default function AdminManagers() {
         }
 
         const result = await response.json();
-        console.log('[MANAGER] Manager created successfully');
-        console.log('[MANAGER] Response data:', JSON.stringify(result, null, 2));
-        console.log('[MANAGER] Temp password:', result.tempPassword);
         return result;
       } catch (error: any) {
-        console.error('[MANAGER] Error creating manager:', error);
         if (error.name === 'AbortError') {
           throw new Error('Request timed out. Please try again.');
         }

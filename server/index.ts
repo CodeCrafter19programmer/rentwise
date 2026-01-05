@@ -5,10 +5,19 @@ import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { randomUUID } from "crypto";
 import { csrfTokenSetter, csrfProtection, getCsrfToken } from "./middleware/csrf";
+import { log } from "./utils/log";
 
 const app = express();
 const httpServer = createServer(app);
+
+app.use((req, res, next) => {
+  const requestId = req.get("x-request-id") || randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader("x-request-id", requestId);
+  next();
+});
 
 // Security headers
 app.use(
@@ -76,38 +85,20 @@ app.use(csrfTokenSetter);
 app.use(csrfProtection);
 app.get("/api/csrf-token", getCsrfToken);
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+export { log };
 
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+  const requestId = (req as any).requestId;
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
+    const contentType = res.getHeader("content-type");
+    const isJson = typeof contentType === "string" && contentType.includes("application/json");
+    if (!isJson) return;
 
-      log(logLine);
-    }
+    log(`${req.method} ${path} ${res.statusCode} in ${duration}ms [${requestId}]`);
   });
 
   next();
@@ -119,9 +110,23 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
+    const requestId = (res.req as any)?.requestId;
 
-    res.status(status).json({ message });
-    throw err;
+    if (res.headersSent) {
+      return;
+    }
+
+    const safeMessage =
+      status >= 500 && process.env.NODE_ENV === "production" ? "Internal Server Error" : message;
+
+    // Log error for debugging (don't expose stack in production)
+    console.error('[ERROR]', status, message, requestId ? `[${requestId}]` : "");
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(err.stack);
+    }
+
+    res.status(status).json({ message: safeMessage, requestId });
+    // Don't re-throw - error is already handled and response sent
   });
 
   // importantly only setup vite in development and after
