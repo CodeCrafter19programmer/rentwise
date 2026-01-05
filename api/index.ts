@@ -15,9 +15,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Body parsing
+// Body parsing with error handling
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// JSON parse error handler - must be after body parsing
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err.type === "entity.parse.failed") {
+    const requestId = (req as any).requestId;
+    return res.status(400).json({ message: "Invalid JSON", requestId });
+  }
+  next(err);
+});
 
 // Request logging
 app.use((req, res, next) => {
