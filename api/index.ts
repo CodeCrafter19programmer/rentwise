@@ -1,74 +1,29 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import express from "express";
 import { randomUUID } from "crypto";
-import { registerRoutes } from "../server/routes";
-import { log } from "../server/utils/log";
 
-// Create Express app synchronously
-const app = express();
-
-// Request ID middleware - first to cover all requests
-app.use((req, res, next) => {
-  const requestId = req.get("x-request-id") || randomUUID();
-  (req as any).requestId = requestId;
-  res.setHeader("x-request-id", requestId);
-  next();
-});
-
-// Body parsing - Vercel already parses JSON, so just use the parsed body
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-// Request logging
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  const requestId = (req as any).requestId;
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    log(`${req.method} ${path} ${res.statusCode} in ${duration}ms [${requestId}]`, "vercel");
-  });
-
-  next();
-});
-
-// Track initialization
-let routesRegistered = false;
-
-// Error handler
-app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const status = err.status || err.statusCode || 500;
-  const requestId = (req as any).requestId;
-  const safeMessage = status >= 500 ? "Internal Server Error" : (err.message || "Error");
-  console.error("[ERROR]", status, err.message, requestId ? `[${requestId}]` : "");
-  res.status(status).json({ message: safeMessage, requestId });
-});
-
-// Vercel serverless handler
+// Native Vercel handler - Express was causing issues
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = (req.headers["x-request-id"] as string) || randomUUID();
   res.setHeader("x-request-id", requestId);
 
+  // Remove /api prefix for routing
+  const path = (req.url || "").replace(/^\/api/, "").split("?")[0] || "/";
+  const method = req.method || "GET";
+
   try {
-    // Register routes once
-    if (!routesRegistered) {
-      await registerRoutes(null as any, app);
-      routesRegistered = true;
+    // Health check
+    if (path === "/health" && method === "GET") {
+      return res.status(200).json({ 
+        status: "ok", 
+        timestamp: new Date().toISOString(),
+        requestId 
+      });
     }
 
-    // Remove /api prefix for Express routing
-    const originalUrl = req.url || "";
-    req.url = originalUrl.replace(/^\/api/, "") || "/";
-
-    // Use Express to handle the request
-    return new Promise<void>((resolve) => {
-      res.on("finish", resolve);
-      res.on("close", resolve);
-      app(req as any, res as any);
-    });
+    // For all other routes, return 404 with requestId
+    return res.status(404).json({ message: "Not found", requestId });
   } catch (error: any) {
-    console.error("[HANDLER ERROR]", error);
+    console.error("[API Error]", error);
     return res.status(500).json({ message: "Internal Server Error", requestId });
   }
 }
