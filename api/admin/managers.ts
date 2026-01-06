@@ -16,10 +16,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const token = authHeader.substring(7);
 
-    // Get environment variables (server-side only, no VITE_ fallbacks)
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    // Get environment variables with VITE_ fallbacks for Vercel
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
       return res.status(500).json({ message: "Server configuration error" });
