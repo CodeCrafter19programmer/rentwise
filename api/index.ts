@@ -2,11 +2,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase client
+// Initialize Supabase client - use VITE_ fallback for URL
 function getSupabaseClient() {
-  const url = process.env.SUPABASE_URL;
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  if (!url || !key) {
+    console.error("[SUPABASE] Missing config:", { hasUrl: !!url, hasKey: !!key });
+    return null;
+  }
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
@@ -60,14 +63,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: "ok", 
         timestamp: new Date().toISOString(),
         requestId,
-        env: {
-          SUPABASE_URL: !!process.env.SUPABASE_URL,
-          SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-          SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
-          VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
-          VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
-          NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-        }
       });
     }
 
