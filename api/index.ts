@@ -2,10 +2,10 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase client - use VITE_ fallback for URL
+// Initialize Supabase client - use VITE_ fallback for all env vars
 function getSupabaseClient() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     console.error("[SUPABASE] Missing config:", { hasUrl: !!url, hasKey: !!key });
     return null;
